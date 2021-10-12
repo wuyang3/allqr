@@ -1,0 +1,9 @@
+/build/*
+!/build/*.py
+/.vscode/*
+/proto/*
+!/proto/*.proto
+*.pdf
+*.txt
+!conf.txt
+.editorconfig

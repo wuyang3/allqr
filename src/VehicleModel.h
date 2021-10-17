@@ -5,8 +5,13 @@
 #include <math.h>
 #include <vector>
 
+namespace Eigen {
+    typedef Eigen::Matrix<double, 10, 1> Vector10d;
+}  // end namespace Eigen
+
 using State = Eigen::Vector4d;
 using Control = Eigen::Vector2d;
+using Constraint = Eigen::Vector10d;
 using Matrix = Eigen::MatrixXd;
 using Vector = Eigen::VectorXd;
 

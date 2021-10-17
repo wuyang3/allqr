@@ -62,6 +62,20 @@ public:
 
     void QuadratizeFinalCost(const Vector &x, Matrix &QFinal, Vector &qFinal);
 
+    void QuadratizeConstraints(
+        const Vector& x, const Control& u,
+        const Constraint& lambda, const Constraint& miu,
+        Matrix& Pt, Matrix& Qt, Matrix& Rt, Vector& qt, Control& rt);
+    void EvaluateConstraints(
+        const Vector& x, const Control& u, Constraint& g);
+    void EvaluateMiuInPenalty(const Constraint lambda, const Constraint miu,
+                              const Constraint g, Constraint& miu_I);
+    double ComputeConstraintCost(
+        const Constraint& lambda, const Constraint& miu, const Constraint& g);
+    void UpdateLambda(
+        Constraint& lambda, const Constraint& miu, const Constraint& g);
+    void UpdateMiu(Constraint& miu);
+
     double ComputeLateralError(const double x, const double y, const size_t t);
 
     size_t ComputeOptimalControlExtendedLQR();
@@ -97,9 +111,12 @@ private:
     size_t max_iter_ = 0;
     size_t state_dim_ = 0;
     size_t control_dim_ = 0;
+    size_t constraint_dim_ = 0;
     Matrix Q_;
     Matrix Q_t_;
     Matrix R_;
+    double init_miu_;
+    double phi_;
 
     Control u_min_ = Control::Zero();
     Control u_max_ = Control::Zero();
@@ -121,6 +138,7 @@ private:
     conf::LqrPlannerConf conf_;
 
     double convergence_tolerance_ = 0.0;
+    double zero_tolerance_ = 0.0;
 
     std::vector<LineSegment> ref_lines_;
     std::vector<Vector> ref_traj_;

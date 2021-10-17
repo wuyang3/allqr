@@ -1,6 +1,6 @@
 #include "LqrPlanner.h"
 
-LqrPlanner::LqrPlanner(const conf::LqrPlannerConf &conf)
+LqrPlanner::LqrPlanner(const conf::LqrPlannerConf& conf)
 {
     dt_ = conf.dt();
     wheelbase_ = conf.wheelbase();
@@ -10,6 +10,8 @@ LqrPlanner::LqrPlanner(const conf::LqrPlannerConf &conf)
     default_horizon_ = horizon_;
     max_iter_ = conf.max_iter();
     convergence_tolerance_ = conf.convergence_tolerance();
+    zero_tolerance_ = conf.zero_tolerance();
+
     lat_acc_bound_ = conf.lateral_acceleration_bound();
     lat_dist_bound_ = conf.lateral_distance_bound();
     reference_speed_ = conf.reference_speed();
@@ -24,8 +26,12 @@ LqrPlanner::LqrPlanner(const conf::LqrPlannerConf &conf)
     lat_dist_penalty_factor_ = conf.lat_distance_penalty_factor();
     lat_dist_scale_factor_ = conf.lat_distance_scale_factor();
 
+    init_miu_ = conf.init_miu();
+    phi_ = conf.phi();
+
     state_dim_ = vehicle_model_.state_dim_ + vehicle_model_.control_dim_;
     control_dim_ = vehicle_model_.control_dim_;
+    constraint_dim_ = 10;  // temporarily given.
 
     initial_state_.resize(state_dim_);
     final_state_.resize(state_dim_);
@@ -334,108 +340,12 @@ double LqrPlanner::ComputeLateralError(const double x, const double y, size_t t)
     return (a * x + b * y + c) / std::sqrt(a * a + b * b);
 }
 
-double LqrPlanner::ControlCost(const Control &u)
+double LqrPlanner::ControlCost(const Control& u)
 {
     return (u - nominal_control_).transpose() * R_ * (u - nominal_control_);
 }
 
-void LqrPlanner::QuadratizeControlCost(const Control &u, Matrix &Rt, Control &rt, Matrix &Qt, Vector &qt)
-{
-    Rt = R_;
-    rt = -R_ * nominal_control_;
-
-    const double d_delta_f = u(0);
-    const double d_acc = u(1);
-    double dist = d_delta_f - delta_u_min_(0);
-
-    Control dist_dot;
-    dist_dot.setZero();
-    dist_dot(0) = 1.0;
-
-    double cost = delta_control_penalty_factor_ * exp(-delta_control_scale_factor_ * dist);
-    double d_cost = -delta_control_scale_factor_ * cost;
-    double dd_cost = -delta_control_scale_factor_ * d_cost;
-
-    Rt += dd_cost * dist_dot * dist_dot.transpose();
-    rt += d_cost * dist_dot;
-
-    dist = delta_u_max_(0) - d_delta_f;
-
-    dist_dot.setZero();
-    dist_dot(0) = -1.0;
-
-    cost = delta_control_penalty_factor_ * exp(-delta_control_scale_factor_ * dist);
-    d_cost = -delta_control_scale_factor_ * cost;
-    dd_cost = -delta_control_scale_factor_ * d_cost;
-
-    Rt += dd_cost * dist_dot * dist_dot.transpose();
-    rt += d_cost * dist_dot;
-}
-
-void LqrPlanner::QuadratizeLatAccCost(const Vector &x, const size_t &t, Matrix &Qt, Vector &qt)
-{
-    // a_lat^2 = v^4 / L^2 * tan^2(delta_f)
-    // x <- [x, y, theta, v, delta_f, acc]
-    // f(x) = dist
-    const double v = x(3);
-    const double delta_f = x(4);
-
-    const double dist = std::pow(lat_acc_bound_, 2) - std::pow(v, 4) / std::pow(wheelbase_, 2) * std::pow(std::tan(delta_f), 2);
-    double cost = lat_acc_penalty_factor_ * exp(-lat_acc_scale_factor_ * dist);
-    double d_cost = -lat_acc_scale_factor_ * cost;
-    double dd_cost = -lat_acc_scale_factor_ * d_cost;
-
-    Vector d_fx = Vector(6);
-    d_fx.setZero();
-    d_fx(3) = -4 * std::pow(v, 3) / std::pow(wheelbase_, 2) * std::pow(std::tan(delta_f), 2);
-    d_fx(4) = -2 * std::pow(v, 4) / std::pow(wheelbase_, 2) * std::tan(delta_f) * std::pow(1.0 / std::cos(delta_f), 2);
-
-    qt += d_cost * d_fx;
-
-    Matrix dd_fx = Matrix(6, 6);
-    dd_fx.setZero();
-
-    dd_fx(3, 3) = -12.0 * std::pow(v, 2) / std::pow(wheelbase_, 2) * std::pow(std::tan(delta_f), 2);
-    dd_fx(3, 4) = -8.0 * std::pow(v, 3) / std::pow(wheelbase_, 2) * std::tan(delta_f) / std::pow(std::cos(delta_f), 2);
-    dd_fx(4, 3) = dd_fx(3, 4);
-    dd_fx(4, 4) = -2.0 * std::pow(v, 4) / std::pow(wheelbase_, 2) * (std::pow(1 / std::cos(delta_f), 4) + 2.0 * std::pow(std::tan(delta_f), 2) * std::pow(1.0 / std::cos(delta_f), 2));
-
-    Qt += dd_cost * d_fx * d_fx.transpose() + d_cost * dd_fx;
-}
-
-void LqrPlanner::QuadratizeLatErrorCost(const Vector &x, const size_t &t, Matrix &Qt, Vector &qt)
-{
-    const int line_seg_id = ref_traj_points_line_seg_id_[t];
-    const double a = ref_lines_[line_seg_id].coefficients(0);
-    const double b = ref_lines_[line_seg_id].coefficients(1);
-    const double c = ref_lines_[line_seg_id].coefficients(2);
-    const double lat_dist_2 = std::pow(a * x(0) + b * x(1) + c, 2) / (a * a + b * b);
-    const double d_lat_dist_2 = 2.0 * (a * x(0) + b * x(1) + c, 2) / (a * a + b * b);
-
-    const double dist = lat_dist_bound_ * lat_dist_bound_ - lat_dist_2;
-
-    Matrix dd_f = Matrix::Zero(state_dim_, state_dim_);
-    Matrix d_f = Vector::Zero(state_dim_);
-
-    const double a2b2 = a * a + b * b;
-
-    dd_f(0, 0) = 2 * a * a / a2b2;
-    dd_f(1, 1) = 2 * b * b / a2b2;
-    dd_f(0, 1) = 2 * a * b / a2b2;
-    dd_f(1, 0) = dd_f(0, 1);
-
-    d_f(0) = 2.0 * a * (a * x(0) + b * x(1) + c) / a2b2;
-    d_f(1) = 2.0 * b * (a * x(0) + b * x(1) + c) / a2b2;
-
-    double cost = lat_dist_penalty_factor_ * std::exp(-lat_dist_scale_factor_ * dist);
-    double d_cost = -lat_dist_scale_factor_ * cost;
-    double dd_cost = -lat_dist_scale_factor_ * d_cost;
-
-    Qt += dd_cost * dd_f * dd_f.transpose();
-    qt += d_cost * d_f;
-}
-
-void LqrPlanner::QuadratizeCost(const Vector &x, const Control &u, const size_t &t, Matrix &Pt, Matrix &Qt, Matrix &Rt, Vector &qt, Control &rt)
+void LqrPlanner::QuadratizeCost(const Vector& x, const Control& u, const size_t& t, Matrix& Pt, Matrix& Qt, Matrix& Rt, Vector& qt, Control& rt)
 {
     if (t == 0)
     {
@@ -451,70 +361,76 @@ void LqrPlanner::QuadratizeCost(const Vector &x, const Control &u, const size_t 
             Qt = Q_t_;
             qt = -Qt * ref_state;
         }
-
-        for (size_t i = 0; i < control_dim_; i++)
-        {
-            double dist = u_max_(i) - x(i + 4);
-            Vector dist_dot(6);
-            dist_dot.setZero();
-            dist_dot(i + 4) = -1.0;
-
-            double penalty_factor = delta_f_penalty_factor_;
-            double scale_factor = delta_f_scale_factor_;
-            if (i == 1)
-            {
-                penalty_factor = acc_penalty_factor_;
-                scale_factor = acc_scale_factor_;
-            }
-            // correct, since the derivative of dist is in dist dot!!!
-            double cost = penalty_factor * exp(-scale_factor * dist);
-            double d_cost = -scale_factor * cost;
-            double dd_cost = -scale_factor * d_cost;
-
-            Qt += dd_cost * dist_dot * dist_dot.transpose();
-            qt += d_cost * dist_dot;
-        }
-
-        for (size_t i = 0; i < control_dim_; i++)
-        {
-            double dist = x(i + 4) - u_min_(i);
-            Vector dist_dot(6);
-            dist_dot.setZero();
-            dist_dot(i + 4) = 1.0;
-
-            double penalty_factor = delta_f_penalty_factor_;
-            double scale_factor = delta_f_scale_factor_;
-            if (i == 1)
-            {
-                penalty_factor = acc_penalty_factor_;
-                scale_factor = acc_scale_factor_;
-            }
-
-            double cost = penalty_factor * exp(-scale_factor * dist);
-            double d_cost = -scale_factor * cost;
-            double dd_cost = -scale_factor * d_cost;
-
-            Qt += dd_cost * dist_dot * dist_dot.transpose();
-            qt += d_cost * dist_dot;
-        }
     }
 
-    QuadratizeLatAccCost(x, t, Qt, qt);
-
-    // QuadratizeLatErrorCost(x, t, Qt, qt);
-
-    QuadratizeControlCost(u, Rt, rt, Qt, qt);
+    Rt = R_;
+    rt = -R_ * nominal_control_;  // why nominal control here?
 
     Pt.setZero();
 }
 
-void LqrPlanner::QuadratizeFinalCost(const Vector &x, Matrix &QFinal, Vector &qFinal)
+void LqrPlanner::QuadratizeConstraints(
+    const Vector& x, const Control& u,
+    const Constraint& lambda, const Constraint& miu,
+    Matrix& Pt, Matrix& Qt, Matrix& Rt, Vector& qt, Control& rt)
+{
+    double k1 = 2 * x(3) * std::tan(x(4)) / wheelbase_;
+    double k2 = std::pow(x(3), 2) / std::pow(std::cos(x(4)), 2) / wheelbase_;
+    Constraint g = Constraint::Zero();
+    Constraint miu_I = Constraint::Zero();
+    EvaluateConstraints(x, u, g);
+    EvaluateMiuInPenalty(lambda, miu, g, miu_I);
+
+    // Update the cost hessian.
+    Qt(3, 3) += (miu_I(8) + miu_I(9)) * std::pow(k1, 2);
+    Qt(4, 4) += (miu_I(0) + miu_I(1)) + (miu_I(8) + miu_I(9)) * std::pow(k2, 2);
+    Qt(4, 3) += (miu_I(8) + miu_I(9)) * k1 * k2;
+    Qt(3, 4) += (miu_I(8) + miu_I(9)) * k1 * k2;
+    Qt(5, 5) += (miu_I(2) + miu_I(3));
+
+    Rt(0, 0) += (miu_I(4) + miu_I(5));
+    Rt(1, 1) += (miu_I(6) + miu_I(7));
+
+    // Update the cost gradient.
+    qt(3) += (k1 * (lambda(8) - lambda(9) + g(8) * miu_I(8) - g(9) * miu_I(9))
+             - (x(3) * std::pow(k1, 2) + x(4) * k1 * k2) * (miu_I(8) + miu_I(9)));
+    qt(4) += (lambda(0) - lambda(1)
+             + k2 * (lambda(8) - lambda(9) + g(8) * miu_I(8) - g(9) * miu_I(9))
+             + g(0) * miu_I(0) - g(1) * miu_I(1)
+             - x(4) * (miu_I(0) + miu_I(1))
+             - (x(4) * std::pow(k2, 2) + x(3) * k1 * k2) * (miu_I(8) + miu_I(9)));
+    qt(5) += (lambda(2) - lambda(3) - x(5) * (miu_I(2) + miu_I(3))+ g(2) * miu_I(2) - g(3) * miu_I(3));
+
+    rt(0) += (lambda(4) - lambda(5) - u(0) * (miu_I(4) + miu_I(5)) + g(4) * miu_I(4) - g(5) * miu_I(5));
+    rt(1) += (lambda(6) - lambda(7) - u(1) * (miu_I(6) + miu_I(7)) + g(6) * miu_I(6) - g(7) * miu_I(7));
+}
+
+void LqrPlanner::QuadratizeFinalCost(const Vector& x, Matrix& QFinal, Vector& qFinal)
 {
     QFinal = Q_;
     qFinal = -Q_ * x; //final_state_;
 }
 
-double LqrPlanner::ComputeIntermediateCost(const Vector &x, const Control &u, const size_t &t)
+void LqrPlanner::EvaluateConstraints(const Vector& x, const Control& u, Constraint& g)
+{
+    g(0) = x(4) - u_max_(0);
+    g(1) = -x(4) + u_min_(0);
+    g(2) = x(5) - u_max_(1);
+    g(3) = -x(5) + u_min_(1);
+    g(4) = u(0) - delta_u_max_(0);
+    g(5) = -u(0) + delta_u_min_(0);
+    g(6) = u(1) - delta_u_max_(1);
+    g(7) = -u(1) + delta_u_min_(1);
+    g(8) = std::pow(x(3), 2) * std::tan(x(4)) / wheelbase_ - lat_acc_bound_;
+    g(9) = -std::pow(x(3), 2) * std:: tan(x(4)) / wheelbase_ + lat_acc_bound_;
+}
+
+void LqrPlanner::EvaluateMiuInPenalty(const Constraint lambda, const Constraint miu, const Constraint g, Constraint& miu_I)
+{
+    miu_I = (lambda.array().abs() < zero_tolerance_ && g.array() < 0.0).select(Constraint::Zero(), miu);
+}
+
+double LqrPlanner::ComputeIntermediateCost(const Vector& x, const Control& u, const size_t& t)
 {
     // std::cout << "t = " << t << std::endl;
     double cost = 0;
@@ -530,38 +446,26 @@ double LqrPlanner::ComputeIntermediateCost(const Vector &x, const Control &u, co
     }
     cost += ControlCost(u);
 
-    for (size_t i = 0; i < control_dim_; i++)
-    {
-        double dist = u_max_(i) - x(i + 4);
-        double penalty_factor = delta_f_penalty_factor_;
-        double scale_factor = delta_f_scale_factor_;
-        if (i == 1)
-        {
-            penalty_factor = acc_penalty_factor_;
-            scale_factor = acc_scale_factor_;
-        }
-        double control_bound_cost = penalty_factor * exp(-scale_factor * dist);
-        cost += control_bound_cost;
-    }
-
-    for (size_t i = 0; i < control_dim_; i++)
-    {
-        double dist = x(i + 4) - u_min_(i);
-        double penalty_factor = delta_f_penalty_factor_;
-        double scale_factor = delta_f_scale_factor_;
-        if (i == 1)
-        {
-            penalty_factor = acc_penalty_factor_;
-            scale_factor = acc_scale_factor_;
-        }
-        double control_bound_cost = penalty_factor * exp(-scale_factor * dist);
-        cost += control_bound_cost;
-    }
-
     return cost;
 }
 
-double LqrPlanner::ComputeFinalCost(const Vector &x)
+double LqrPlanner::ComputeConstraintCost(const Constraint& lambda, const Constraint& miu_I, const Constraint& g)
+{
+    return g.transpose() * (lambda + miu_I.cwiseProduct(g));
+}
+
+void LqrPlanner::UpdateLambda(Constraint& lambda, const Constraint& miu, const Constraint& g)
+{
+    lambda = lambda + miu.cwiseProduct(g);
+    lambda = lambda.cwiseMax(0.0);
+}
+
+void LqrPlanner::UpdateMiu(Constraint& miu)
+{
+    miu = miu * phi_;
+}
+
+double LqrPlanner::ComputeFinalCost(const Vector& x)
 {
     double cost = (x - final_state_).transpose() * Q_ * (x - final_state_);
     return cost;
@@ -655,6 +559,18 @@ size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
         return 0;
     }
 
+    // Initialization of multipliers, penalities, constraints.
+    std::vector<Constraint> Lambda;
+    std::vector<Constraint> Miu;
+    std::vector<Constraint> G;
+
+    for (size_t i = 0; i < horizon_; i++)
+    {
+        Lambda.push_back(Constraint::Zero());
+        Miu.push_back(init_miu_ * Constraint::Ones());
+        G.push_back(Constraint::Zero());
+    }
+
     // Initialization
     std::vector<Matrix> L;
     std::vector<Control> l;
@@ -709,6 +625,7 @@ size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
             q.setZero();
             Control r = Control::Zero();
             QuadratizeCost(xHat, uHat, t, P, Q, R, q, r);
+            QuadratizeConstraints(xHat, uHat, Lambda[t], Miu[t], P, Q, R, q, r);
 
             const Matrix SBarQ = SBar[t] + Q;
             const Vector sBarqSBarQcBar = sBar[t] + q + SBarQ * cBar;
@@ -729,7 +646,7 @@ size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
         }
 
         // backward pass
-        QuadratizeFinalCost(xHat, S[horizon_], s[horizon_]);
+        QuadratizeFinalCost(xHat, S[horizon_], s[horizon_]);  // do we need to add constraint cost here?
         xHat = -(S[horizon_] + SBar[horizon_]).inverse() * (s[horizon_] + sBar[horizon_]);
 
         for (size_t t = horizon_ - 1; t != -1; --t)
@@ -750,6 +667,7 @@ size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
             Control r = Control::Zero();
 
             QuadratizeCost(xHatPrime, uHat, t, P, Q, R, q, r);
+            QuadratizeConstraints(xHatPrime, uHat, Lambda[t], Miu[t], P, Q, R, q, r);
 
             const Matrix C = B.transpose() * S[t + 1] * A + P;
             const Matrix D = A.transpose() * S[t + 1] * A + Q;
@@ -774,10 +692,24 @@ size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
         {
             Control u = L[t] * x + l[t];
             newCost += ComputeIntermediateCost(x, u, t);
+
+            Constraint g = Constraint::Zero();
+            Constraint miu_I = Constraint::Zero();
+            EvaluateConstraints(x, u, g);
+            EvaluateMiuInPenalty(Lambda[t], Miu[t], g, miu_I);
+            newCost += ComputeConstraintCost(Lambda[t], miu_I, g);
+            G[t] = g;
+
             x = vehicle_model_.ForwardAugmentedDynamics(x, u);
         }
 
         newCost += ComputeFinalCost(x);
+
+        for (size_t t = 0; t < horizon_; t++)
+        {
+            UpdateLambda(Lambda[t], Miu[t], G[t]);
+            UpdateMiu(Miu[t]);
+        }
 
         // std::cout << "oldcost = " << oldCost << std::endl;
         // std::cout << "newcost = " << newCost << std::endl;

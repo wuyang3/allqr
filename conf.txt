@@ -75,14 +75,14 @@ lat_distance_scale_factor: 1.0
 enable_random_initialization: true
 
 max_iter_inner: 100
-max_iter_outer: 10
+max_iter_outer: 5
 
-convergence_tolerance: 1e-3
-constraint_tolerance: 1e-2
+convergence_tolerance: 1e-7
+constraint_tolerance: 1e-3
 
-init_miu: 1.0
-phi: 1.0
-zero_tolerance: 1e-4
+init_miu: 0.01
+phi: 5.0
+zero_tolerance: 1e-6
 
 reference_lines_x {
 	value: 21.3235

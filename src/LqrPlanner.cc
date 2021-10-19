@@ -34,7 +34,7 @@ LqrPlanner::LqrPlanner(const conf::LqrPlannerConf& conf)
 
     state_dim_ = vehicle_model_.state_dim_ + vehicle_model_.control_dim_;
     control_dim_ = vehicle_model_.control_dim_;
-    constraint_dim_ = 10;  // temporarily given.
+    constraint_dim_ = kConstraintDim;  // temporarily given.
 
     initial_state_.resize(state_dim_);
     final_state_.resize(state_dim_);
@@ -377,39 +377,42 @@ void LqrPlanner::QuadratizeConstraints(
     const Constraint& lambda, const Constraint& miu,
     Matrix& Pt, Matrix& Qt, Matrix& Rt, Vector& qt, Control& rt)
 {
-    double k1 = 2 * x(3) * std::tan(x(4)) / wheelbase_;
-    double k2 = std::pow(x(3), 2) / std::pow(std::cos(x(4)), 2) / wheelbase_;
+    //double k1 = 2 * x(3) * std::tan(x(4)) / wheelbase_;
+    //double k2 = std::pow(x(3), 2) / std::pow(std::cos(x(4)), 2) / wheelbase_;
     Constraint g = Constraint::Zero();
     Constraint miu_I = Constraint::Zero();
     EvaluateConstraints(x, u, g);
     EvaluateMiuInPenalty(lambda, miu, g, miu_I);
 
-    //Eigen::MatrixXd cons(constraint_dim_, 3);
-    //cons << g, lambda, miu_I;
-
-    //std::cout << "g    lambda    miu_I" << std::endl;
-    //std::cout << cons << std::endl;
-
     // Update the cost hessian.
-    Qt(3, 3) += (miu_I(8) + miu_I(9)) * std::pow(k1, 2);
-    Qt(4, 4) += (miu_I(0) + miu_I(1)) + (miu_I(8) + miu_I(9)) * std::pow(k2, 2);
-    Qt(4, 3) += (miu_I(8) + miu_I(9)) * k1 * k2;
-    Qt(3, 4) += (miu_I(8) + miu_I(9)) * k1 * k2;
+    //Qt(3, 3) += (miu_I(8) + miu_I(9)) * std::pow(k1, 2);
+    Qt(4, 4) += (miu_I(0) + miu_I(1));
+    //Qt(4, 3) += (miu_I(8) + miu_I(9)) * k1 * k2;
+    //Qt(3, 4) += (miu_I(8) + miu_I(9)) * k1 * k2;
     Qt(5, 5) += (miu_I(2) + miu_I(3));
 
     Rt(0, 0) += (miu_I(4) + miu_I(5));
     Rt(1, 1) += (miu_I(6) + miu_I(7));
 
+/*     Eigen::Matrix<double, 8, 4> M;
+    M << g, lambda, miu, miu_I;
+
+     if (!M.array().isNaN().sum()){
+        std::cout << "g    lambda    miu    miu_I" << std::endl;
+        std::cout << M << std::endl;
+        std::cout << "x " << x.transpose() << std::endl;
+        //std::cout << "k1 " << k1 << "k2 " << k2 << std::endl;
+        std::cout << "Qt " << std::endl;
+        std::cout << Qt << std::endl;
+    }*/
+
     // Update the cost gradient.
-    qt(3) += (k1 * (lambda(8) - lambda(9) + g(8) * miu_I(8) - g(9) * miu_I(9))
-             - (x(3) * std::pow(k1, 2)
-             + x(4) * k1 * k2) * (miu_I(8) + miu_I(9)));
+    //qt(3) += (k1 * (lambda(8) - lambda(9) + g(8) * miu_I(8) - g(9) * miu_I(9))
+    //         - (x(3) * std::pow(k1, 2)
+    //         + x(4) * k1 * k2) * (miu_I(8) + miu_I(9)));
     qt(4) += (lambda(0) - lambda(1)
-              + k2 * (lambda(8) - lambda(9) + g(8) * miu_I(8) - g(9) * miu_I(9))
               + g(0) * miu_I(0) - g(1) * miu_I(1)
-              - x(4) * (miu_I(0) + miu_I(1))
-              - (x(4) * std::pow(k2, 2)
-              + x(3) * k1 * k2) * (miu_I(8) + miu_I(9)));
+              - x(4) * (miu_I(0) + miu_I(1)));
     qt(5) += (lambda(2) - lambda(3) - x(5) * (miu_I(2) + miu_I(3))
               + g(2) * miu_I(2) - g(3) * miu_I(3));
 
@@ -436,8 +439,8 @@ void LqrPlanner::EvaluateConstraints(const Vector& x, const Control& u, Constrai
     g(5) = -u(0) + delta_u_min_(0);
     g(6) = u(1) - delta_u_max_(1);
     g(7) = -u(1) + delta_u_min_(1);
-    g(8) = std::pow(x(3), 2) * std::tan(x(4)) / wheelbase_ - lat_acc_bound_;
-    g(9) = -std::pow(x(3), 2) * std:: tan(x(4)) / wheelbase_ + lat_acc_bound_;
+    //g(8) = std::pow(x(3), 2) * std::tan(x(4)) / wheelbase_ - lat_acc_bound_;
+    //g(9) = -std::pow(x(3), 2) * std:: tan(x(4)) / wheelbase_ + lat_acc_bound_;
 }
 
 void LqrPlanner::EvaluateMiuInPenalty(const Constraint lambda, const Constraint miu, const Constraint g, Constraint& miu_I)
@@ -467,6 +470,7 @@ double LqrPlanner::ComputeIntermediateCost(const Vector& x, const Control& u, co
 double LqrPlanner::ComputeConstraintCost(const Constraint& lambda, const Constraint& miu_I, const Constraint& g)
 {
     return g.transpose() * (lambda + miu_I.cwiseProduct(g));
+    //return 0.0;
 }
 
 void LqrPlanner::UpdateLambda(Constraint& lambda, const Constraint& miu, const Constraint& g)
@@ -586,6 +590,7 @@ int LqrPlanner::ComputeInnerExtendedLQR(
     }
 
     double oldCost = -log(0.0);
+    *minInnerCost = oldCost;
     Vector xHat = initial_state_;
 
     *innerIter = 0;
@@ -704,28 +709,32 @@ int LqrPlanner::ComputeInnerExtendedLQR(
 
         newCost += ComputeFinalCost(x);
 
-        // std::cout << "oldcost = " << oldCost << std::endl;
-        // std::cout << "newcost = " << newCost << std::endl;
-        // std::cout << "abs((oldCost - newCost) = " << std::fabs(oldCost - newCost) << std::endl;
+        //std::cout << "oldcost = " << oldCost << std::endl;
+        //std::cout << "newcost = " << newCost << std::endl;
+        //std::cout << "abs((oldCost - newCost) = " << std::fabs(oldCost - newCost) << std::endl;
 
-        if (newCost < oldCost)
+        if (newCost < *minInnerCost)
         {
             *minInnerCost = newCost;
         }
 
-        *innerIter += 1;
-        oldCost = newCost;
-
         if (std::fabs(oldCost - newCost) / newCost < convergence_tolerance_)
         {
             innerConvergeFlag = INNER_LOW_COST_DELTA;
+            std::cout << "Inner converged: old " << oldCost
+                      << " new " << newCost 
+                      << " iter "<< *innerIter << std::endl;
 
             break;
         }
+        oldCost = newCost;
 
+        *innerIter += 1;
         if (*innerIter >= max_iter_inner_)
         {
             innerConvergeFlag = INNER_REACH_MAX_ITER;
+            std::cout << "Inner converged: iter "
+                      << *innerIter << std::endl;
 
             break;
         }
@@ -752,6 +761,8 @@ int LqrPlanner::ComputerOuterAugLagrangian(
     if (maximal_constraint_violation < constraint_tolerannce_)
     {
         outerConvergeFlag = OUTER_LOW_CONSTR_VIOLATION;
+        std::cout << "Outer converged: violation "
+                      << maximal_constraint_violation << std::endl;
 
         return outerConvergeFlag;
     }
@@ -759,6 +770,8 @@ int LqrPlanner::ComputerOuterAugLagrangian(
     if (*outerIter >= max_iter_outer_)
     {
         outerConvergeFlag = OUTER_REACH_MAX_ITER;
+        std::cout << "Outer converged: iter "
+                      << *outerIter << std::endl;
 
         return outerConvergeFlag;
     }
@@ -771,6 +784,8 @@ int LqrPlanner::ComputerOuterAugLagrangian(
             UpdateMiu(Miu[t]);
         }
         *outerIter += 1;
+
+        std::cout << "Outer al updated. iter " << *outerIter << std::endl;
     }
 
     return outerConvergeFlag;

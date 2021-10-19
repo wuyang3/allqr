@@ -5,13 +5,17 @@
 #include <math.h>
 #include <vector>
 
+constexpr size_t kConstraintDim = 8;
+
 namespace Eigen {
     typedef Eigen::Matrix<double, 10, 1> Vector10d;
+    typedef Eigen::Matrix<double, 9, 1> Vector9d;
+    typedef Eigen::Matrix<double, 8, 1> Vector8d;
 }  // end namespace Eigen
 
 using State = Eigen::Vector4d;
 using Control = Eigen::Vector2d;
-using Constraint = Eigen::Vector10d;
+using Constraint = Eigen::Vector8d;
 using Matrix = Eigen::MatrixXd;
 using Vector = Eigen::VectorXd;
 

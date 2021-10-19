@@ -29,7 +29,7 @@ message LqrPlannerConf {
   optional PlannerType planner_type = 1;
   optional double convergence_tolerance = 2 [default = 1e-3];
   optional double dt = 3 [default = 0.1];
-  optional int32 max_iter = 4 [default = 100];
+  optional int32 max_iter_inner = 4 [default = 100];
   optional double wheelbase = 5 [default = 2.0];
   optional double lane_width = 6 [default = 3.70];
   optional int32 horizon = 7 [default = 100];
@@ -67,4 +67,6 @@ message LqrPlannerConf {
   optional double phi = 35 [default = 10.0];
 
   optional double zero_tolerance = 36 [default = 1e-4];
+  optional int32 max_iter_outer = 37 [default = 30];
+  optional double constraint_tolerance = 38 [default = 1e-5];
 }

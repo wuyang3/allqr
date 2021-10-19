@@ -8,9 +8,6 @@ LqrPlanner::LqrPlanner(const conf::LqrPlannerConf& conf)
     lane_width_ = conf.lane_width();
     horizon_ = conf.horizon() / conf.subdivision();
     default_horizon_ = horizon_;
-    max_iter_ = conf.max_iter();
-    convergence_tolerance_ = conf.convergence_tolerance();
-    zero_tolerance_ = conf.zero_tolerance();
 
     lat_acc_bound_ = conf.lateral_acceleration_bound();
     lat_dist_bound_ = conf.lateral_distance_bound();
@@ -25,6 +22,12 @@ LqrPlanner::LqrPlanner(const conf::LqrPlannerConf& conf)
     lat_acc_scale_factor_ = conf.lat_acc_scale_factor();
     lat_dist_penalty_factor_ = conf.lat_distance_penalty_factor();
     lat_dist_scale_factor_ = conf.lat_distance_scale_factor();
+
+    max_iter_inner_ = conf.max_iter_inner();
+    max_iter_outer_ = conf.max_iter_outer();
+    convergence_tolerance_ = conf.convergence_tolerance();
+    constraint_tolerannce_ = conf.constraint_tolerance();
+    zero_tolerance_ = conf.zero_tolerance();
 
     init_miu_ = conf.init_miu();
     phi_ = conf.phi();
@@ -381,6 +384,12 @@ void LqrPlanner::QuadratizeConstraints(
     EvaluateConstraints(x, u, g);
     EvaluateMiuInPenalty(lambda, miu, g, miu_I);
 
+    //Eigen::MatrixXd cons(constraint_dim_, 3);
+    //cons << g, lambda, miu_I;
+
+    //std::cout << "g    lambda    miu_I" << std::endl;
+    //std::cout << cons << std::endl;
+
     // Update the cost hessian.
     Qt(3, 3) += (miu_I(8) + miu_I(9)) * std::pow(k1, 2);
     Qt(4, 4) += (miu_I(0) + miu_I(1)) + (miu_I(8) + miu_I(9)) * std::pow(k2, 2);
@@ -393,16 +402,22 @@ void LqrPlanner::QuadratizeConstraints(
 
     // Update the cost gradient.
     qt(3) += (k1 * (lambda(8) - lambda(9) + g(8) * miu_I(8) - g(9) * miu_I(9))
-             - (x(3) * std::pow(k1, 2) + x(4) * k1 * k2) * (miu_I(8) + miu_I(9)));
+             - (x(3) * std::pow(k1, 2)
+             + x(4) * k1 * k2) * (miu_I(8) + miu_I(9)));
     qt(4) += (lambda(0) - lambda(1)
-             + k2 * (lambda(8) - lambda(9) + g(8) * miu_I(8) - g(9) * miu_I(9))
-             + g(0) * miu_I(0) - g(1) * miu_I(1)
-             - x(4) * (miu_I(0) + miu_I(1))
-             - (x(4) * std::pow(k2, 2) + x(3) * k1 * k2) * (miu_I(8) + miu_I(9)));
-    qt(5) += (lambda(2) - lambda(3) - x(5) * (miu_I(2) + miu_I(3))+ g(2) * miu_I(2) - g(3) * miu_I(3));
+              + k2 * (lambda(8) - lambda(9) + g(8) * miu_I(8) - g(9) * miu_I(9))
+              + g(0) * miu_I(0) - g(1) * miu_I(1)
+              - x(4) * (miu_I(0) + miu_I(1))
+              - (x(4) * std::pow(k2, 2)
+              + x(3) * k1 * k2) * (miu_I(8) + miu_I(9)));
+    qt(5) += (lambda(2) - lambda(3) - x(5) * (miu_I(2) + miu_I(3))
+              + g(2) * miu_I(2) - g(3) * miu_I(3));
 
-    rt(0) += (lambda(4) - lambda(5) - u(0) * (miu_I(4) + miu_I(5)) + g(4) * miu_I(4) - g(5) * miu_I(5));
-    rt(1) += (lambda(6) - lambda(7) - u(1) * (miu_I(6) + miu_I(7)) + g(6) * miu_I(6) - g(7) * miu_I(7));
+    rt(0) += (lambda(4) - lambda(5) - u(0) * (miu_I(4) + miu_I(5))
+              + g(4) * miu_I(4) - g(5) * miu_I(5));
+    rt(1) += (lambda(6) - lambda(7)
+              - u(1) * (miu_I(6) + miu_I(7))
+              + g(6) * miu_I(6) - g(7) * miu_I(7));
 }
 
 void LqrPlanner::QuadratizeFinalCost(const Vector& x, Matrix& QFinal, Vector& qFinal)
@@ -534,14 +549,16 @@ void LqrPlanner::Spin()
     std::cout << "frame #   |   iter  |   time (s)" << std::endl;
     while (ready_to_solve_)
     {
+        std::vector<size_t> iters;
+        std::vector<int> flags;
         clock_t beginTime = clock();
-        size_t iter = ComputeOptimalControlExtendedLQR();
+        ComputeOptimalControlExtendedLQR(iters, flags);
         clock_t endTime = clock();
-        if (iter > 0)
+        if (iters[0] > 0)
         {
             std::cout << "--------------------------------" << std::endl;
             std::cout << std::setw(5) << count;
-            std::cout << "    |   " << iter;
+            std::cout << "    |   " << iters[0] << " " << iters[1];
             std::cout << "    |   " << std::setprecision(3) << (endTime - beginTime) / (double)CLOCKS_PER_SEC;
             std::cout << std::endl;
         }
@@ -549,37 +566,12 @@ void LqrPlanner::Spin()
     }
 }
 
-size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
+int LqrPlanner::ComputeInnerExtendedLQR(
+    const std::vector<Constraint>& Lambda, const std::vector<Constraint>& Miu,
+    std::vector<Constraint>& G, std::vector<Matrix>& L, std::vector<Control>& l,
+    double* minInnerCost, size_t* innerIter)
 {
-    GenerateTrackingReference();
-
-    if (ready_to_solve_ == false)
-    {
-        // std::cout << "problem is not solvable" << std::endl;
-        return 0;
-    }
-
-    // Initialization of multipliers, penalities, constraints.
-    std::vector<Constraint> Lambda;
-    std::vector<Constraint> Miu;
-    std::vector<Constraint> G;
-
-    for (size_t i = 0; i < horizon_; i++)
-    {
-        Lambda.push_back(Constraint::Zero());
-        Miu.push_back(init_miu_ * Constraint::Ones());
-        G.push_back(Constraint::Zero());
-    }
-
-    // Initialization
-    std::vector<Matrix> L;
-    std::vector<Control> l;
-    for (size_t i = 0; i < horizon_; i++)
-    {
-        L.push_back(Matrix::Zero(control_dim_, state_dim_));
-        l.push_back(nominal_control_);
-    }
-
+    int innerConvergeFlag = INNER_UNCONVERGED;
     std::vector<Matrix> S;
     std::vector<Vector> s;
     std::vector<Matrix> SBar;
@@ -596,7 +588,9 @@ size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
     double oldCost = -log(0.0);
     Vector xHat = initial_state_;
 
-    for (size_t iter = 1; iter <= max_iter_; iter++)
+    *innerIter = 0;
+
+    while (true)
     {
         xHat = initial_state_;
         // forward pass
@@ -701,15 +695,14 @@ size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
             G[t] = g;
 
             x = vehicle_model_.ForwardAugmentedDynamics(x, u);
+
+            //Eigen::MatrixXd cons(1, 3);
+            //cons << Lambda[t](0), miu_I(0), g(0);
+            //std::cout << "lambda    miu_I    g" << std::endl;
+            //std::cout << cons << std::endl;
         }
 
         newCost += ComputeFinalCost(x);
-
-        for (size_t t = 0; t < horizon_; t++)
-        {
-            UpdateLambda(Lambda[t], Miu[t], G[t]);
-            UpdateMiu(Miu[t]);
-        }
 
         // std::cout << "oldcost = " << oldCost << std::endl;
         // std::cout << "newcost = " << newCost << std::endl;
@@ -717,53 +710,91 @@ size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
 
         if (newCost < oldCost)
         {
-            minCost_ = newCost;
+            *minInnerCost = newCost;
         }
+
+        *innerIter += 1;
+        oldCost = newCost;
 
         if (std::fabs(oldCost - newCost) / newCost < convergence_tolerance_)
         {
-            // std::cout << "minimum cost = " << minCost_ << std::endl;
+            innerConvergeFlag = INNER_LOW_COST_DELTA;
 
-            // execute control
-            // solution_states_.clear();
-            // optimal_control_.clear();
-            Vector x = initial_state_;
-            if (is_first_run_)
-            {
-                solution_states_.push_back(x);
-                is_first_run_ = false;
-            }
-            double lat_error = ComputeLateralError(x(0), x(1), 0);
-
-            lateral_error_.push_back(lat_error);
-
-            for (size_t t = 0; t < horizon_; t++)
-            {
-                Control u = L[t] * x + l[t];
-                optimal_control_.push_back(u);
-                x = vehicle_model_.ForwardAugmentedDynamics(x, u);
-                solution_states_.push_back(x);
-                lat_error = ComputeLateralError(x(0), x(1), t + 1);
-
-                lateral_error_.push_back(lat_error);
-            }
-
-            initial_state_ = solution_states_.back();
-            initial_control_(0) = 0.0; //solution_states_.back()(4);
-            initial_control_(1) = 0.0; //solution_states_.back()(5);
-            // initial_control_ = optimal_control_.back();
-
-            return iter;
+            break;
         }
 
-        oldCost = newCost;
+        if (*innerIter >= max_iter_inner_)
+        {
+            innerConvergeFlag = INNER_REACH_MAX_ITER;
+
+            break;
+        }
     }
 
+    return innerConvergeFlag;
+}
+
+int LqrPlanner::ComputerOuterAugLagrangian(
+    const std::vector<Constraint>& G,
+    std::vector<Constraint>& Lambda, std::vector<Constraint>& Miu,
+    size_t* outerIter)
+{
+    int outerConvergeFlag = OUTER_UNCONVERGED;
+    double maximal_constraint_violation = 0.0;
+    for (size_t t = 0; t < horizon_; t++)
+    {
+        if (G[t].maxCoeff() > maximal_constraint_violation)
+        {
+            maximal_constraint_violation = G[t].maxCoeff();
+        }
+    }
+
+    if (maximal_constraint_violation < constraint_tolerannce_)
+    {
+        outerConvergeFlag = OUTER_LOW_CONSTR_VIOLATION;
+
+        return outerConvergeFlag;
+    }
+
+    if (*outerIter >= max_iter_outer_)
+    {
+        outerConvergeFlag = OUTER_REACH_MAX_ITER;
+
+        return outerConvergeFlag;
+    }
+
+    if (outerConvergeFlag == OUTER_UNCONVERGED)
+    {
+        for (size_t t = 0; t < horizon_; t++)
+        {
+            UpdateLambda(Lambda[t], Miu[t], G[t]);
+            UpdateMiu(Miu[t]);
+        }
+        *outerIter += 1;
+    }
+
+    return outerConvergeFlag;
+}
+
+void LqrPlanner::PropogateOptimalTrajectory(
+    const std::vector<Matrix>& L, const std::vector<Control>& l,
+    const int innerConvergeFlag)
+{
     // execute control
     // solution_states_.clear();
     // optimal_control_.clear();
     Vector x = initial_state_;
-    solution_states_.push_back(x);
+    if (is_first_run_)
+    {
+        solution_states_.push_back(x);
+        is_first_run_ = false;
+    }
+
+    if (innerConvergeFlag == INNER_LOW_COST_DELTA)
+    {
+        double lat_error = ComputeLateralError(x(0), x(1), 0);
+        lateral_error_.push_back(lat_error);
+    }
 
     for (size_t t = 0; t < horizon_; t++)
     {
@@ -771,9 +802,75 @@ size_t LqrPlanner::ComputeOptimalControlExtendedLQR()
         optimal_control_.push_back(u);
         x = vehicle_model_.ForwardAugmentedDynamics(x, u);
         solution_states_.push_back(x);
+
+        if (innerConvergeFlag == INNER_LOW_COST_DELTA)
+        {
+            double lat_error = ComputeLateralError(x(0), x(1), t + 1);
+            lateral_error_.push_back(lat_error);
+        }
     }
 
-    return max_iter_;
+    if (innerConvergeFlag == INNER_LOW_COST_DELTA)
+    {
+        // the initial state for the next reference line segment
+        // is not set if the last iteration does not converge.
+        initial_state_ = solution_states_.back();
+        initial_control_(0) = 0.0;  // solution_states_.back()(4);
+        initial_control_(1) = 0.0;
+    }
+}
+
+void LqrPlanner::ComputeOptimalControlExtendedLQR(std::vector<size_t>& iters, std::vector<int>& flags)
+{
+    GenerateTrackingReference();
+
+    if (ready_to_solve_ == false)
+    {
+        // std::cout << "problem is not solvable" << std::endl;
+        return;
+    }
+
+    // Initialization of outer loop variables.
+    std::vector<Constraint> Lambda;
+    std::vector<Constraint> Miu;
+    std::vector<Constraint> G;
+
+    for (size_t i = 0; i < horizon_; i++)
+    {
+        Lambda.push_back(Constraint::Zero());
+        Miu.push_back(init_miu_ * Constraint::Ones());
+        G.push_back(Constraint::Zero());
+    }
+
+    // Initialization of inner loop variables.
+    std::vector<Matrix> L;
+    std::vector<Control> l;
+
+    for (size_t i = 0; i < horizon_; i++)
+    {
+        L.push_back(Matrix::Zero(control_dim_, state_dim_));
+        l.push_back(nominal_control_);
+    }
+
+    // Initialization of the convergence loop.
+    double minInnerCost = 0.0;
+    size_t innerIter = 0;
+    size_t outerIter = 0;
+    int innerConvergeFlag = INNER_UNCONVERGED;
+    int outerConvergeFlag = OUTER_UNCONVERGED;
+
+    while (outerConvergeFlag == OUTER_UNCONVERGED)
+    {
+        innerConvergeFlag = ComputeInnerExtendedLQR(Lambda, Miu, G, L, l, &minInnerCost, &innerIter);
+        outerConvergeFlag = ComputerOuterAugLagrangian(G, Lambda, Miu, &outerIter);
+    }
+
+    PropogateOptimalTrajectory(L, l, innerConvergeFlag);
+
+    iters.push_back(innerIter);
+    iters.push_back(outerIter);
+    flags.push_back(innerConvergeFlag);
+    flags.push_back(outerConvergeFlag);
 }
 
 // size_t LqrPlanner::ComputeOptimalControlIterativeLQR()

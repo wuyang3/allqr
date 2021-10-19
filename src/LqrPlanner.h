@@ -14,6 +14,14 @@
 #include "proto/conf.pb.h"
 #include "VehicleModel.h"
 
+#define INNER_UNCONVERGED        (0)
+#define INNER_REACH_MAX_ITER (1)
+#define INNER_LOW_COST_DELTA (2)
+
+#define OUTER_UNCONVERGED          (0)
+#define OUTER_REACH_MAX_ITER        (1)
+#define OUTER_LOW_CONSTR_VIOLATION  (2)
+
 struct LineSegment
 {
     Eigen::Vector3d coefficients;
@@ -78,7 +86,24 @@ public:
 
     double ComputeLateralError(const double x, const double y, const size_t t);
 
-    size_t ComputeOptimalControlExtendedLQR();
+    void ComputeOptimalControlExtendedLQR(std::vector<size_t>& iters, std::vector<int>& flags);
+
+    int ComputeInnerExtendedLQR(
+        const std::vector<Constraint>& Lambda, const std::vector<Constraint>& Miu,
+        std::vector<Constraint>& G, std::vector<Matrix>& L, std::vector<Control>& l,
+        double* minInnerCost, size_t* innerIter);
+
+    int ComputerOuterAugLagrangian(
+        const std::vector<Constraint>& G, const size_t outerIter,
+        std::vector<Constraint>& Lambda, std::vector<Constraint>& Miu);
+
+    int ComputerOuterAugLagrangian(
+        const std::vector<Constraint>& G,
+        std::vector<Constraint>& Lambda, std::vector<Constraint>& Miu,
+        size_t* outerIter);
+    void PropogateOptimalTrajectory(
+        const std::vector<Matrix>& L, const std::vector<Control>& l,
+        const int innerConvergeFlag);
 
     size_t ComputeOptimalControlIterativeLQR();
 
@@ -99,6 +124,8 @@ public:
     std::pair<std::vector<Vector>, std::vector<Vector>> GetReferenceTrajectoryLeftRightBounds();
     std::vector<double> GetLateralError();
 
+    std::vector<Eigen::Vector2d> ConvergenceFlag;
+
 private:
     VehicleModel vehicle_model_;
     double wheelbase_;
@@ -108,7 +135,8 @@ private:
     const Control nominal_control_ = Control::Zero();
     size_t horizon_ = 0;
     size_t default_horizon_ = 0;
-    size_t max_iter_ = 0;
+    size_t max_iter_inner_ = 0;
+    size_t max_iter_outer_ = 0;
     size_t state_dim_ = 0;
     size_t control_dim_ = 0;
     size_t constraint_dim_ = 0;
@@ -133,11 +161,11 @@ private:
 
     std::vector<Control> optimal_control_;
     std::vector<Vector> solution_states_;
-    double minCost_;
 
     conf::LqrPlannerConf conf_;
 
     double convergence_tolerance_ = 0.0;
+    double constraint_tolerannce_ = 0.0;
     double zero_tolerance_ = 0.0;
 
     std::vector<LineSegment> ref_lines_;

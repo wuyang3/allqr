@@ -63,7 +63,10 @@ int main(int argc, char **argv)
     states_file.open("states.txt");
     for (size_t i = 0; i < solution_states.size(); i++)
     {
-        states_file << conf.dt() * i << ", " << solution_states[i](0) << ", " << solution_states[i](1) << ", " << solution_states[i](2) << ", " << solution_states[i](3) << ", " << lat_acc[i] << ", " << lateral_error[i] << std::endl;
+        if (!solution_states[i].array().isNaN().matrix().any())
+        {
+            states_file << conf.dt() * i << ", " << solution_states[i](0) << ", " << solution_states[i](1) << ", " << solution_states[i](2) << ", " << solution_states[i](3) << ", " << lat_acc[i] << ", " << lateral_error[i] << std::endl;
+        }
     }
     states_file.close();
 
@@ -71,7 +74,10 @@ int main(int argc, char **argv)
     controls_file.open("controls.txt");
     for (size_t i = 0; i < optimal_controls.size(); i++)
     {
-        controls_file << conf.dt() * i << ", " << solution_states[i](4) << ", " << solution_states[i](5) << std::endl;
+        if (!solution_states[i].array().isNaN().matrix().any())
+        {
+            controls_file << conf.dt() * i << ", " << solution_states[i](4) << ", " << solution_states[i](5) << std::endl;
+        }
     }
     controls_file.close();
 

@@ -75,12 +75,22 @@ lat_distance_scale_factor: 1.0
 enable_random_initialization: true
 
 max_iter_inner: 100
-max_iter_outer: 5
+max_iter_outer: 10
 
-convergence_tolerance: 1e-7
-constraint_tolerance: 1e-3
+convergence_relative_tolerance: 1e-3
+convergence_abs_tolerance: 1e-2
+constraint_tolerance: 1e-2
 
-init_miu: 0.01
+init_miu {
+    value: 10.0
+    value: 10.0
+    value: 10.0
+    value: 10.0
+    value: 10.0
+    value: 10.0
+    value: 10.0
+    value: 10.0
+}
 phi: 5.0
 zero_tolerance: 1e-6
 

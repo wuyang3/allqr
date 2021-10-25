@@ -27,7 +27,7 @@ message Vector {
 
 message LqrPlannerConf {
   optional PlannerType planner_type = 1;
-  optional double convergence_tolerance = 2 [default = 1e-3];
+  optional double convergence_relative_tolerance = 2 [default = 1e-3];
   optional double dt = 3 [default = 0.1];
   optional int32 max_iter_inner = 4 [default = 100];
   optional double wheelbase = 5 [default = 2.0];
@@ -63,10 +63,11 @@ message LqrPlannerConf {
   optional Vector reference_lines_x = 32;
   optional Vector reference_lines_y = 33;
 
-  optional double init_miu = 34 [default=1.0];
+  optional DiagonalMatrix init_miu = 34;
   optional double phi = 35 [default = 10.0];
 
   optional double zero_tolerance = 36 [default = 1e-4];
   optional int32 max_iter_outer = 37 [default = 30];
   optional double constraint_tolerance = 38 [default = 1e-5];
+  optional double convergence_abs_tolerance = 39 [default = 1e-4];
 }

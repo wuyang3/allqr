@@ -15,8 +15,10 @@
 #include "VehicleModel.h"
 
 #define INNER_UNCONVERGED        (0)
-#define INNER_REACH_MAX_ITER (1)
-#define INNER_LOW_COST_DELTA (2)
+#define INNER_REACH_MAX_ITER     (1)
+#define INNER_LOW_COST_REL_DELTA (2)
+#define INNER_LOW_COST_ABS_DELTA (3)
+
 
 #define OUTER_UNCONVERGED          (0)
 #define OUTER_REACH_MAX_ITER        (1)
@@ -82,7 +84,9 @@ public:
         const Constraint& lambda, const Constraint& miu, const Constraint& g);
     void UpdateLambda(
         Constraint& lambda, const Constraint& miu, const Constraint& g);
-    void UpdateMiu(Constraint& miu);
+    // void UpdateMiu(Constraint& miu);
+    void UpdateMiu(Constraint& miu, const Constraint& g);
+
 
     double ComputeLateralError(const double x, const double y, const size_t t);
 
@@ -143,7 +147,7 @@ private:
     Matrix Q_;
     Matrix Q_t_;
     Matrix R_;
-    double init_miu_;
+    Constraint init_miu_;
     double phi_;
 
     Control u_min_ = Control::Zero();
@@ -164,7 +168,8 @@ private:
 
     conf::LqrPlannerConf conf_;
 
-    double convergence_tolerance_ = 0.0;
+    double convergence_relative_tolerance_ = 0.0;  // relative changes.
+    double convergence_abs_tolerance_ = 0.0;  // absolute changes.
     double constraint_tolerannce_ = 0.0;
     double zero_tolerance_ = 0.0;
 

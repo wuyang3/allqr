@@ -34,6 +34,8 @@ def main(argv):
     time_c = controls[:, 0]
     delta = controls[:, 1]
     acc = controls[:, 2]
+    d_delta_f = controls[:, 3]
+    d_acc = controls[:, 4]
 
     df = pd.read_csv('ref_traj.txt', header=None)
     ref_traj = df.to_numpy()
@@ -66,6 +68,10 @@ def main(argv):
     acc_max = parameters[5]
     lat_acc_limit = parameters[6]
     lat_dist_limit = parameters[7]
+    d_delta_f_min = parameters[8]
+    d_delta_f_max = parameters[10]
+    d_acc_min = parameters[9]
+    d_acc_max = parameters[11]
 
     figure, ax, = plt.subplots(figsize=(25, 12))
     gs = gridspec.GridSpec(2, 5)
@@ -76,7 +82,7 @@ def main(argv):
     plt.subplots_adjust(left=None, bottom=None, right=None,
                         top=None, wspace=0.5, hspace=0.5)
 
-    ax1 = figure.add_subplot(gs[0, 0:4])
+    ax1 = figure.add_subplot(gs[0, 0:3])
     ax1.title.set_text('vehicle trajectory')
     ax1.title.set_fontsize(15)
     ax1.grid()
@@ -198,32 +204,32 @@ def main(argv):
     ax4.legend(['planned lateral acceleration', 'bounds'],
                loc='upper left', fontsize=10, bbox_to_anchor=(0.0, 1.3))
 
-    ax5 = figure.add_subplot(gs[1, 3:4])
-    ax5.title.set_text('vehicle lateral error')
-    ax5.title.set_fontsize(15)
-    ax5.grid()
-    ax5.set_xlabel('time (s)', fontsize=12)
-    ax5.set_ylabel('lat acc (m/s^2)', fontsize=12)
-    ax5.set_xlim([0, np.max(time_s)])
-    ax5.set_ylim([min(-lat_dist_limit, min(lat_error))-0.5,
-                  max(lat_dist_limit, max(lat_error))+0.5])
+    # ax5 = figure.add_subplot(gs[1, 3:4])
+    # ax5.title.set_text('vehicle lateral error')
+    # ax5.title.set_fontsize(15)
+    # ax5.grid()
+    # ax5.set_xlabel('time (s)', fontsize=12)
+    # ax5.set_ylabel('lat acc (m/s^2)', fontsize=12)
+    # ax5.set_xlim([0, np.max(time_s)])
+    # ax5.set_ylim([min(-lat_dist_limit, min(lat_error))-0.5,
+    #               max(lat_dist_limit, max(lat_error))+0.5])
 
-    lat_error_plot, = ax5.plot([], [], 'r.', markersize=4)
-    lat_error_plot.set_xdata(time_s)
-    lat_error_plot.set_ydata(lat_error)
+    # lat_error_plot, = ax5.plot([], [], 'r.', markersize=4)
+    # lat_error_plot.set_xdata(time_s)
+    # lat_error_plot.set_ydata(lat_error)
 
-    min_lat_error_plot, = ax5.plot([], [], 'g.-', markersize=3)
-    min_lat_error_plot.set_xdata(time_s)
-    min_lat_error_plot.set_ydata(-lat_dist_limit*np.ones([1, len(time_s)]))
+    # min_lat_error_plot, = ax5.plot([], [], 'g.-', markersize=3)
+    # min_lat_error_plot.set_xdata(time_s)
+    # min_lat_error_plot.set_ydata(-lat_dist_limit*np.ones([1, len(time_s)]))
 
-    max_lat_error_plot, = ax5.plot([], [], 'g.-', markersize=3)
-    max_lat_error_plot.set_xdata(time_s)
-    max_lat_error_plot.set_ydata(lat_dist_limit*np.ones([1, len(time_s)]))
+    # max_lat_error_plot, = ax5.plot([], [], 'g.-', markersize=3)
+    # max_lat_error_plot.set_xdata(time_s)
+    # max_lat_error_plot.set_ydata(lat_dist_limit*np.ones([1, len(time_s)]))
 
-    ax5.legend(['planned lateral error', 'bounds'],
-               loc='upper left', fontsize=10, bbox_to_anchor=(0.0, 1.3))
+    # ax5.legend(['planned lateral error', 'bounds'],
+    #            loc='upper left', fontsize=10, bbox_to_anchor=(0.0, 1.3))
 
-    ax6 = figure.add_subplot(gs[0, 4:5])
+    ax6 = figure.add_subplot(gs[0, 3:4])
     ax6.title.set_text('control - front wheel angle')
     ax6.title.set_fontsize(15)
     ax6.grid()
@@ -247,8 +253,31 @@ def main(argv):
     ax6.legend(['planned front wheel angle', 'bounds'],
                loc='upper left', fontsize=10, bbox_to_anchor=(1.0, 1.0))
 
-    ax7 = figure.add_subplot(gs[1, 4:5])
-    ax7.title.set_text('control - acceleration')
+    ax8 = figure.add_subplot(gs[0, 4:5])
+    ax8.title.set_text('control - delta front wheel')
+    ax8.title.set_fontsize(15)
+    ax8.grid()
+    ax8.set_xlabel('time (s)', fontsize=12)
+    ax8.set_ylabel('delta front wheel (rad)', fontsize=12)
+    ax8.set_xlim([0, np.max(time_c)+dt])
+    ax8.set_ylim([d_delta_f_min-0.005, d_delta_f_max+0.005])
+    d_steer_plot, = ax8.plot([], [], 'r.', markersize=3)
+    d_steer_plot.set_xdata(time_c)
+    d_steer_plot.set_ydata(d_delta_f)
+
+    min_d_steer_plot, = ax8.plot([], [], 'g.-', markersize=3)
+    min_d_steer_plot.set_xdata(time_c)
+    min_d_steer_plot.set_ydata(d_delta_f_min*np.ones([1, len(time_c)]))
+
+    max_d_steer_plot, = ax8.plot([], [], 'g.-', markersize=3)
+    max_d_steer_plot.set_xdata(time_c)
+    max_d_steer_plot.set_ydata(d_delta_f_max*np.ones([1, len(time_c)]))
+
+    ax8.legend(['planned delta front wheel', 'bounds'],
+               loc='upper left', fontsize=10, bbox_to_anchor=(1.0, 1.0))
+
+    ax7 = figure.add_subplot(gs[1, 3:4])
+    ax7.title.set_text('control - acc')
     ax7.title.set_fontsize(15)
     ax7.grid()
     ax7.set_xlabel('time (s)', fontsize=12)
@@ -268,7 +297,31 @@ def main(argv):
     max_acc_plot.set_xdata(time_c)
     max_acc_plot.set_ydata(acc_max*np.ones([1, len(time_c)]))
 
-    ax7.legend(['planned acceleration', 'bounds'],
+    ax7.legend(['planned acc', 'bounds'],
+               loc='upper left', fontsize=10, bbox_to_anchor=(1.0, 1.0))
+
+    ax9 = figure.add_subplot(gs[1, 4:5])
+    ax9.title.set_text('control - delta acc')
+    ax9.title.set_fontsize(15)
+    ax9.grid()
+    ax9.set_xlabel('time (s)', fontsize=12)
+    ax9.set_ylabel('delta acc (m/s^2)', fontsize=12)
+    ax9.set_xlim([0, np.max(time_c)+dt])
+    ax9.set_ylim([d_acc_min-0.2, d_acc_max+0.2])
+
+    d_acc_plot, = ax9.plot([], [], 'r.', markersize=3)
+    d_acc_plot.set_xdata(time_c)
+    d_acc_plot.set_ydata(d_acc)
+
+    d_min_acc_plot, = ax9.plot([], [], 'g.-', markersize=3)
+    d_min_acc_plot.set_xdata(time_c)
+    d_min_acc_plot.set_ydata(d_acc_min*np.ones([1, len(time_c)]))
+
+    d_max_acc_plot, = ax9.plot([], [], 'g.-', markersize=3)
+    d_max_acc_plot.set_xdata(time_c)
+    d_max_acc_plot.set_ydata(d_acc_max*np.ones([1, len(time_c)]))
+
+    ax9.legend(['planned delta acceleration', 'bounds'],
                loc='upper left', fontsize=10, bbox_to_anchor=(1.0, 1.0))
 
     plt.show()

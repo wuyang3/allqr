@@ -48,10 +48,10 @@ control_bounds {
 }
 
 delta_control_bounds {
-    lower_bound: -0.001
-    lower_bound: -0.1
-    upper_bound: 0.001
-    upper_bound: 0.1
+    lower_bound: -0.01
+    lower_bound: -0.2
+    upper_bound: 0.01
+    upper_bound: 0.2
 }
 
 delta_f_penalty_factor: 5.0
@@ -79,19 +79,19 @@ max_iter_outer: 10
 
 convergence_relative_tolerance: 1e-3
 convergence_abs_tolerance: 1e-2
-constraint_tolerance: 1e-2
+constraint_tolerance: 1e-5
 
 init_miu {
-    value: 10.0
-    value: 10.0
-    value: 10.0
-    value: 10.0
-    value: 10.0
-    value: 10.0
-    value: 10.0
-    value: 10.0
+    value: 1.0
+    value: 1.0
+    value: 1.0
+    value: 1.0
+    value: 1.0
+    value: 1.0
+    value: 1.0
+    value: 1.0
 }
-phi: 5.0
+phi: 10.0
 zero_tolerance: 1e-6
 
 reference_lines_x {

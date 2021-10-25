@@ -76,7 +76,10 @@ int main(int argc, char **argv)
     {
         if (!solution_states[i].array().isNaN().matrix().any())
         {
-            controls_file << conf.dt() * i << ", " << solution_states[i](4) << ", " << solution_states[i](5) << std::endl;
+            controls_file << conf.dt() * i << ", "
+                          << solution_states[i](4) << ", " << solution_states[i](5) << ", "
+                          << optimal_controls[i](0) << ", " << optimal_controls[i](1)
+                          << std::endl;
         }
     }
     controls_file.close();

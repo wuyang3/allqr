@@ -548,6 +548,10 @@ std::vector<double> LqrPlanner::GetOptimizationParameters()
     result.push_back(u_max_(1));
     result.push_back(lat_acc_bound_);
     result.push_back(lat_dist_bound_);
+    result.push_back(delta_u_min_(0));
+    result.push_back(delta_u_min_(1));
+    result.push_back(delta_u_max_(0));
+    result.push_back(delta_u_max_(1));
     return result;
 }
 
@@ -784,7 +788,7 @@ int LqrPlanner::ComputerOuterAugLagrangian(
     size_t* outerIter)
 {
     int outerConvergeFlag = OUTER_UNCONVERGED;
-    double maximal_constraint_violation = 0.0;
+    double maximal_constraint_violation = log(0.0);
     for (size_t t = 0; t < horizon_; t++)
     {
         if (G[t].maxCoeff() > maximal_constraint_violation)
@@ -798,7 +802,8 @@ int LqrPlanner::ComputerOuterAugLagrangian(
         outerConvergeFlag = OUTER_LOW_CONSTR_VIOLATION;
         std::cout << "Outer converged: violation "
                       << maximal_constraint_violation
-                      << " lower than thres" << std::endl;
+                      << " lower than thres " 
+                      << constraint_tolerannce_ << std::endl;
 
         return outerConvergeFlag;
     }

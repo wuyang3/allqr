@@ -81,16 +81,7 @@ convergence_relative_tolerance: 1e-3
 convergence_abs_tolerance: 1e-2
 constraint_tolerance: 1e-5
 
-init_miu {
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-}
+init_miu: 1.0
 phi: 10.0
 zero_tolerance: 1e-6
 

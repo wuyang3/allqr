@@ -63,7 +63,7 @@ message LqrPlannerConf {
   optional Vector reference_lines_x = 32;
   optional Vector reference_lines_y = 33;
 
-  optional DiagonalMatrix init_miu = 34;
+  optional double init_miu = 34;
   optional double phi = 35 [default = 10.0];
 
   optional double zero_tolerance = 36 [default = 1e-4];

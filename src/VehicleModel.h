@@ -6,6 +6,7 @@
 #include <vector>
 
 constexpr size_t kConstraintDim = 8;
+constexpr size_t kFinalConstraintDim = 4;
 
 namespace Eigen {
     typedef Eigen::Matrix<double, 10, 1> Vector10d;

@@ -440,6 +440,32 @@ void LqrPlanner::QuadratizeConstraints(
     //     } while (std::cin.get() != '\n');
     // }
 }
+void LqrPlanner::QuadratizeFinalConstraints(
+    const Vector& x,
+    const FinalConstraint& lambda, const FinalConstraint& miu,
+    Matrix& Qt, Vector& qt)
+{
+    //double k1 = 2 * x(3) * std::tan(x(4)) / wheelbase_;
+    //double k2 = std::pow(x(3), 2) / std::pow(std::cos(x(4)), 2) / wheelbase_;
+    FinalConstraint g = FinalConstraint::Zero();
+    FinalConstraint miu_I = FinalConstraint::Zero();
+
+    EvaluateFinalConstraints(x, g);
+    EvaluateMiuInPenalty(lambda, miu, g, miu_I);
+
+    // Update the cost hessian.
+    //Qt(3, 3) += (miu_I(8) + miu_I(9)) * std::pow(k1, 2);
+    Qt(4, 4) += (miu_I(0) + miu_I(1));
+    //Qt(4, 3) += (miu_I(8) + miu_I(9)) * k1 * k2;
+    //Qt(3, 4) += (miu_I(8) + miu_I(9)) * k1 * k2;
+    Qt(5, 5) += (miu_I(2) + miu_I(3));
+
+    qt(4) += (lambda(0) - lambda(1)
+              + g(0) * miu_I(0) - g(1) * miu_I(1)
+              - x(4) * (miu_I(0) + miu_I(1)));
+    qt(5) += (lambda(2) - lambda(3) - x(5) * (miu_I(2) + miu_I(3))
+              + g(2) * miu_I(2) - g(3) * miu_I(3));
+}
 
 void LqrPlanner::QuadratizeFinalCost(const Vector& x, Matrix& QFinal, Vector& qFinal)
 {
@@ -461,9 +487,21 @@ void LqrPlanner::EvaluateConstraints(const Vector& x, const Control& u, Constrai
     //g(9) = -std::pow(x(3), 2) * std:: tan(x(4)) / wheelbase_ + lat_acc_bound_;
 }
 
-void LqrPlanner::EvaluateMiuInPenalty(const Constraint lambda, const Constraint miu, const Constraint g, Constraint& miu_I)
+void LqrPlanner::EvaluateFinalConstraints(const Vector& x, FinalConstraint& g)
 {
-    miu_I = (lambda.array().abs() < zero_tolerance_ && g.array() < 0.0).select(Constraint::Zero(), miu);
+    g(0) = x(4) - u_max_(0);
+    g(1) = -x(4) + u_min_(0);
+    g(2) = x(5) - u_max_(1);
+    g(3) = -x(5) + u_min_(1);
+}
+
+template <typename Derived>
+void LqrPlanner::EvaluateMiuInPenalty(
+    const MatrixBase<Derived>& lambda, const MatrixBase<Derived>& miu,
+    const MatrixBase<Derived>& g, MatrixBase<Derived>& miu_I)
+{
+    miu_I = (lambda.array().abs() < zero_tolerance_ && g.array() < 0.0)
+            .select(typename Derived::Zero(), miu);
 }
 
 double LqrPlanner::ComputeIntermediateCost(const Vector& x, const Control& u, const size_t& t)
@@ -485,19 +523,24 @@ double LqrPlanner::ComputeIntermediateCost(const Vector& x, const Control& u, co
     return cost;
 }
 
-double LqrPlanner::ComputeConstraintCost(const Constraint& lambda, const Constraint& miu_I, const Constraint& g)
+template <typename Derived>
+double LqrPlanner::ComputeConstraintCost(
+    const MatrixBase<Derived>& lambda, const MatrixBase<Derived>& miu_I, const MatrixBase<Derived>& g)
 {
     return g.transpose() * (lambda + miu_I.cwiseProduct(g));
     //return 0.0;
 }
 
-void LqrPlanner::UpdateLambda(Constraint& lambda, const Constraint& miu, const Constraint& g)
+template <typename Derived>
+void LqrPlanner::UpdateLambda(
+    MatrixBase<Derived>& lambda, const MatrixBase<Derived>& miu, const MatrixBase<Derived>& g)
 {
     lambda = lambda + miu.cwiseProduct(g);
     lambda = lambda.cwiseMax(0.0);
 }
 
-void LqrPlanner::UpdateMiu(Constraint& miu, const Constraint& g)
+template <typename Derived>
+void LqrPlanner::UpdateMiu(MatrixBase<Derived>& miu, const MatrixBase<Derived>& g)
 {
     //miu = (g.array() > 0.0).select(miu * phi_, miu);
     miu = miu * phi_;
@@ -670,7 +713,8 @@ int LqrPlanner::ComputeInnerExtendedLQR(
         }
 
         // backward pass
-        QuadratizeFinalCost(xHat, S[horizon_], s[horizon_]);  // do we need to add constraint cost here?
+        QuadratizeFinalCost(xHat, S[horizon_], s[horizon_]);
+        QuadratizeFinalConstraints(xHat, Lambda[horizon_], Miu[horizon_], S[horizon_], s[horizon_]);
         xHat = -(S[horizon_] + SBar[horizon_]).inverse() * (s[horizon_] + sBar[horizon_]);
 
         for (size_t t = horizon_ - 1; t != -1; --t)

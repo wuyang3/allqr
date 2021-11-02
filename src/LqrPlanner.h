@@ -76,6 +76,10 @@ public:
         const Vector& x, const Control& u,
         const Constraint& lambda, const Constraint& miu,
         Matrix& Pt, Matrix& Qt, Matrix& Rt, Vector& qt, Control& rt);
+    void QuadratizeFinalConstraints(
+        const Vector& x,
+        const FinalConstraint& lambda, const FinalConstraint& miu,
+        Matrix& Qt, Vector& qt);
     void EvaluateConstraints(
         const Vector& x, const Control& u, Constraint& g);
     void EvaluateMiuInPenalty(const Constraint lambda, const Constraint miu,

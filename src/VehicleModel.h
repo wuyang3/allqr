@@ -16,6 +16,7 @@ namespace Eigen {
 using State = Eigen::Vector4d;
 using Control = Eigen::Vector2d;
 using Constraint = Eigen::Vector8d;
+using FinalConstraint = Eigen::Vector4d;
 using Matrix = Eigen::MatrixXd;
 using Vector = Eigen::VectorXd;
 

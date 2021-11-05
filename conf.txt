@@ -36,7 +36,7 @@ matrix_q_intermediate {
 }
 
 matrix_r {
-    value: 30.0
+    value: 100.0
     value: 0.5
 }
 
@@ -48,9 +48,9 @@ control_bounds {
 }
 
 delta_control_bounds {
-    lower_bound: -0.01
+    lower_bound: -0.015
     lower_bound: -0.2
-    upper_bound: 0.01
+    upper_bound: 0.015
     upper_bound: 0.2
 }
 
@@ -81,16 +81,7 @@ convergence_relative_tolerance: 1e-3
 convergence_abs_tolerance: 1e-2
 constraint_tolerance: 1e-5
 
-init_miu {
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-    value: 1.0
-}
+init_miu: 1000.0
 phi: 10.0
 zero_tolerance: 1e-6
 

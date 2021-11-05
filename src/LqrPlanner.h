@@ -76,41 +76,56 @@ public:
         const Vector& x, const Control& u,
         const Constraint& lambda, const Constraint& miu,
         Matrix& Pt, Matrix& Qt, Matrix& Rt, Vector& qt, Control& rt);
+    void QuadratizeFinalConstraints(
+        const Vector& x,
+        const FinalConstraint& lambda, const FinalConstraint& miu,
+        Matrix& Qt, Vector& qt);
     void EvaluateConstraints(
         const Vector& x, const Control& u, Constraint& g);
-    void EvaluateMiuInPenalty(const Constraint lambda, const Constraint miu,
-                              const Constraint g, Constraint& miu_I);
-    double ComputeConstraintCost(
-        const Constraint& lambda, const Constraint& miu, const Constraint& g);
-    void UpdateLambda(
-        Constraint& lambda, const Constraint& miu, const Constraint& g);
-    // void UpdateMiu(Constraint& miu);
-    void UpdateMiu(Constraint& miu, const Constraint& g);
+    void EvaluateFinalConstraints(const Vector& x, FinalConstraint& g);
 
+    void EvaluateMiuInPenalty(
+        const Eigen::Ref<const Eigen::VectorXd>& lambda,
+        const Eigen::Ref<const Eigen::VectorXd>& miu,
+        const Eigen::Ref<const Eigen::VectorXd>& g,
+        Eigen::Ref<Eigen::VectorXd> miu_I);
+
+    void UpdateLambda(
+        const Eigen::Ref<const Eigen::VectorXd>& miu,
+        const Eigen::Ref<const Eigen::VectorXd>& g,
+        Eigen::Ref<Eigen::VectorXd> lambda);
+
+    void UpdateMiu(
+        const Eigen::Ref<const Eigen::VectorXd>& g,
+        Eigen::Ref<Eigen::VectorXd> miu);
 
     double ComputeLateralError(const double x, const double y, const size_t t);
 
     void ComputeOptimalControlExtendedLQR(std::vector<size_t>& iters, std::vector<int>& flags);
 
     int ComputeInnerExtendedLQR(
-        const std::vector<Constraint>& Lambda, const std::vector<Constraint>& Miu,
-        std::vector<Constraint>& G, std::vector<Matrix>& L, std::vector<Control>& l,
+        const std::vector<Eigen::VectorXd>& Lambda,
+        const std::vector<Eigen::VectorXd>& Miu,
+        std::vector<Eigen::VectorXd>& G,
+        std::vector<Matrix>& L, std::vector<Control>& l,
         double* minInnerCost, size_t* innerIter);
 
     int ComputerOuterAugLagrangian(
-        const std::vector<Constraint>& G, const size_t outerIter,
-        std::vector<Constraint>& Lambda, std::vector<Constraint>& Miu);
-
-    int ComputerOuterAugLagrangian(
-        const std::vector<Constraint>& G,
-        std::vector<Constraint>& Lambda, std::vector<Constraint>& Miu,
+        const std::vector<Eigen::VectorXd>& G,
+        std::vector<Eigen::VectorXd>& Lambda,
+        std::vector<Eigen::VectorXd>& Miu,
         size_t* outerIter);
+
     void PropogateOptimalTrajectory(
         const std::vector<Matrix>& L, const std::vector<Control>& l,
         const int innerConvergeFlag);
 
     size_t ComputeOptimalControlIterativeLQR();
 
+    double ComputeConstraintCost(
+        const Eigen::Ref<const Eigen::VectorXd>& lambda,
+        const Eigen::Ref<const Eigen::VectorXd>& miu_I,
+        const Eigen::Ref<const Eigen::VectorXd>& g);
     double ComputeIntermediateCost(const Vector &x, const Control &u, const size_t &t);
     double ComputeFinalCost(const Vector &x);
     std::vector<double> ComputeLateralAccelerations();
@@ -144,10 +159,11 @@ private:
     size_t state_dim_ = 0;
     size_t control_dim_ = 0;
     size_t constraint_dim_ = 0;
+    size_t final_constraint_dim_ = 0;
     Matrix Q_;
     Matrix Q_t_;
     Matrix R_;
-    Constraint init_miu_;
+    double init_miu_;
     double phi_;
 
     Control u_min_ = Control::Zero();

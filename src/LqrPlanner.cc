@@ -32,15 +32,13 @@ LqrPlanner::LqrPlanner(const conf::LqrPlannerConf& conf)
 
     state_dim_ = vehicle_model_.state_dim_ + vehicle_model_.control_dim_;
     control_dim_ = vehicle_model_.control_dim_;
-    constraint_dim_ = kConstraintDim;  // temporarily given.
+    constraint_dim_ = kConstraintDim;
+    final_constraint_dim_ = kFinalConstraintDim;
 
     initial_state_.resize(state_dim_);
     final_state_.resize(state_dim_);
 
-    for (size_t i = 0; i < constraint_dim_; i++)
-    {
-        init_miu_(i) = conf.init_miu().value(i);
-    }
+    init_miu_ = conf.phi();
     phi_ = conf.phi();
 
     Q_ = Matrix::Zero(state_dim_, state_dim_);
@@ -447,6 +445,33 @@ void LqrPlanner::QuadratizeFinalCost(const Vector& x, Matrix& QFinal, Vector& qF
     qFinal = -Q_ * x; //final_state_;
 }
 
+void LqrPlanner::QuadratizeFinalConstraints(
+    const Vector& x,
+    const FinalConstraint& lambda, const FinalConstraint& miu,
+    Matrix& Qt, Vector& qt)
+{
+    //double k1 = 2 * x(3) * std::tan(x(4)) / wheelbase_;
+    //double k2 = std::pow(x(3), 2) / std::pow(std::cos(x(4)), 2) / wheelbase_;
+    FinalConstraint g = FinalConstraint::Zero();
+    FinalConstraint miu_I = FinalConstraint::Zero();
+
+    EvaluateFinalConstraints(x, g);
+    EvaluateMiuInPenalty(lambda, miu, g, miu_I);
+
+    // Update the cost hessian.
+    //Qt(3, 3) += (miu_I(8) + miu_I(9)) * std::pow(k1, 2);
+    Qt(4, 4) += (miu_I(0) + miu_I(1));
+    //Qt(4, 3) += (miu_I(8) + miu_I(9)) * k1 * k2;
+    //Qt(3, 4) += (miu_I(8) + miu_I(9)) * k1 * k2;
+    Qt(5, 5) += (miu_I(2) + miu_I(3));
+
+    qt(4) += (lambda(0) - lambda(1)
+              + g(0) * miu_I(0) - g(1) * miu_I(1)
+              - x(4) * (miu_I(0) + miu_I(1)));
+    qt(5) += (lambda(2) - lambda(3) - x(5) * (miu_I(2) + miu_I(3))
+              + g(2) * miu_I(2) - g(3) * miu_I(3));
+}
+
 void LqrPlanner::EvaluateConstraints(const Vector& x, const Control& u, Constraint& g)
 {
     g(0) = x(4) - u_max_(0);
@@ -461,9 +486,39 @@ void LqrPlanner::EvaluateConstraints(const Vector& x, const Control& u, Constrai
     //g(9) = -std::pow(x(3), 2) * std:: tan(x(4)) / wheelbase_ + lat_acc_bound_;
 }
 
-void LqrPlanner::EvaluateMiuInPenalty(const Constraint lambda, const Constraint miu, const Constraint g, Constraint& miu_I)
+void LqrPlanner::EvaluateFinalConstraints(const Vector& x, FinalConstraint& g)
 {
-    miu_I = (lambda.array().abs() < zero_tolerance_ && g.array() < 0.0).select(Constraint::Zero(), miu);
+    g(0) = x(4) - u_max_(0);
+    g(1) = -x(4) + u_min_(0);
+    g(2) = x(5) - u_max_(1);
+    g(3) = -x(5) + u_min_(1);
+}
+
+void LqrPlanner::EvaluateMiuInPenalty(
+    const Eigen::Ref<const Eigen::VectorXd>& lambda,
+    const Eigen::Ref<const Eigen::VectorXd>& miu,
+    const Eigen::Ref<const Eigen::VectorXd>& g,
+    Eigen::Ref<Eigen::VectorXd> miu_I)
+{
+    miu_I = (lambda.array().abs() < zero_tolerance_ && g.array() < 0.0)
+            .select(0.0, miu);
+}
+
+void LqrPlanner::UpdateLambda(
+    const Eigen::Ref<const Eigen::VectorXd>& miu,
+    const Eigen::Ref<const Eigen::VectorXd>& g,
+    Eigen::Ref<Eigen::VectorXd> lambda)
+{
+    lambda = lambda + miu.cwiseProduct(g);
+    lambda = lambda.cwiseMax(0.0);
+}
+
+void LqrPlanner::UpdateMiu(
+    const Eigen::Ref<const Eigen::VectorXd>& g,
+    Eigen::Ref<Eigen::VectorXd> miu)
+{
+    //miu = (g.array() > 0.0).select(miu * phi_, miu);
+    miu = miu * phi_;
 }
 
 double LqrPlanner::ComputeIntermediateCost(const Vector& x, const Control& u, const size_t& t)
@@ -485,22 +540,13 @@ double LqrPlanner::ComputeIntermediateCost(const Vector& x, const Control& u, co
     return cost;
 }
 
-double LqrPlanner::ComputeConstraintCost(const Constraint& lambda, const Constraint& miu_I, const Constraint& g)
+double LqrPlanner::ComputeConstraintCost(
+    const Eigen::Ref<const Eigen::VectorXd>& lambda,
+    const Eigen::Ref<const Eigen::VectorXd>& miu_I,
+    const Eigen::Ref<const Eigen::VectorXd>& g)
 {
     return g.transpose() * (lambda + miu_I.cwiseProduct(g));
     //return 0.0;
-}
-
-void LqrPlanner::UpdateLambda(Constraint& lambda, const Constraint& miu, const Constraint& g)
-{
-    lambda = lambda + miu.cwiseProduct(g);
-    lambda = lambda.cwiseMax(0.0);
-}
-
-void LqrPlanner::UpdateMiu(Constraint& miu, const Constraint& g)
-{
-    //miu = (g.array() > 0.0).select(miu * phi_, miu);
-    miu = miu * phi_;
 }
 
 double LqrPlanner::ComputeFinalCost(const Vector& x)
@@ -596,8 +642,10 @@ void LqrPlanner::Spin()
 }
 
 int LqrPlanner::ComputeInnerExtendedLQR(
-    const std::vector<Constraint>& Lambda, const std::vector<Constraint>& Miu,
-    std::vector<Constraint>& G, std::vector<Matrix>& L, std::vector<Control>& l,
+    const std::vector<Eigen::VectorXd>& Lambda,
+    const std::vector<Eigen::VectorXd>& Miu,
+    std::vector<Eigen::VectorXd>& G,
+    std::vector<Matrix>& L, std::vector<Control>& l,
     double* minInnerCost, size_t* innerIter)
 {
     int innerConvergeFlag = INNER_UNCONVERGED;
@@ -670,7 +718,8 @@ int LqrPlanner::ComputeInnerExtendedLQR(
         }
 
         // backward pass
-        QuadratizeFinalCost(xHat, S[horizon_], s[horizon_]);  // do we need to add constraint cost here?
+        QuadratizeFinalCost(xHat, S[horizon_], s[horizon_]);
+        QuadratizeFinalConstraints(xHat, Lambda[horizon_], Miu[horizon_], S[horizon_], s[horizon_]);
         xHat = -(S[horizon_] + SBar[horizon_]).inverse() * (s[horizon_] + sBar[horizon_]);
 
         for (size_t t = horizon_ - 1; t != -1; --t)
@@ -725,14 +774,15 @@ int LqrPlanner::ComputeInnerExtendedLQR(
             G[t] = g;
 
             x = vehicle_model_.ForwardAugmentedDynamics(x, u);
-
-            //Eigen::MatrixXd cons(1, 3);
-            //cons << Lambda[t](0), miu_I(0), g(0);
-            //std::cout << "lambda    miu_I    g" << std::endl;
-            //std::cout << cons << std::endl;
         }
-
         newCost += ComputeFinalCost(x);
+
+        FinalConstraint g = FinalConstraint::Zero();
+        FinalConstraint miu_I = FinalConstraint::Zero();
+        EvaluateFinalConstraints(x, g);
+        EvaluateMiuInPenalty(Lambda[horizon_], Miu[horizon_], g, miu_I);
+        newCost += ComputeConstraintCost(Lambda[horizon_], miu_I, g);
+        G[horizon_] = g;
 
         //std::cout << "oldcost = " << oldCost << std::endl;
         //std::cout << "newcost = " << newCost << std::endl;
@@ -783,13 +833,14 @@ int LqrPlanner::ComputeInnerExtendedLQR(
 }
 
 int LqrPlanner::ComputerOuterAugLagrangian(
-    const std::vector<Constraint>& G,
-    std::vector<Constraint>& Lambda, std::vector<Constraint>& Miu,
+    const std::vector<Eigen::VectorXd>& G,
+    std::vector<Eigen::VectorXd>& Lambda,
+    std::vector<Eigen::VectorXd>& Miu,
     size_t* outerIter)
 {
     int outerConvergeFlag = OUTER_UNCONVERGED;
     double maximal_constraint_violation = log(0.0);
-    for (size_t t = 0; t < horizon_; t++)
+    for (size_t t = 0; t <= horizon_; t++)
     {
         if (G[t].maxCoeff() > maximal_constraint_violation)
         {
@@ -802,7 +853,7 @@ int LqrPlanner::ComputerOuterAugLagrangian(
         outerConvergeFlag = OUTER_LOW_CONSTR_VIOLATION;
         std::cout << "Outer converged: violation "
                       << maximal_constraint_violation
-                      << " lower than thres " 
+                      << " lower than thres "
                       << constraint_tolerannce_ << std::endl;
 
         return outerConvergeFlag;
@@ -820,10 +871,10 @@ int LqrPlanner::ComputerOuterAugLagrangian(
 
     if (outerConvergeFlag == OUTER_UNCONVERGED)
     {
-        for (size_t t = 0; t < horizon_; t++)
+        for (size_t t = 0; t <= horizon_; t++)
         {
-            UpdateLambda(Lambda[t], Miu[t], G[t]);
-            UpdateMiu(Miu[t], G[t]);
+            UpdateLambda(Miu[t], G[t], Lambda[t]);
+            UpdateMiu(G[t], Miu[t]);
         }
         *outerIter += 1;
 
@@ -902,16 +953,19 @@ void LqrPlanner::ComputeOptimalControlExtendedLQR(std::vector<size_t>& iters, st
     }
 
     // Initialization of outer loop variables.
-    std::vector<Constraint> Lambda;
-    std::vector<Constraint> Miu;
-    std::vector<Constraint> G;
+    std::vector<Eigen::VectorXd> Lambda;
+    std::vector<Eigen::VectorXd> Miu;
+    std::vector<Eigen::VectorXd> G;
 
     for (size_t i = 0; i < horizon_; i++)
     {
         Lambda.push_back(Constraint::Zero());
-        Miu.push_back(init_miu_);
+        Miu.push_back(init_miu_ * Constraint::Ones());
         G.push_back(Constraint::Zero());
     }
+    Lambda.push_back(FinalConstraint::Zero());
+    Miu.push_back(init_miu_ * FinalConstraint::Ones());
+    G.push_back(FinalConstraint::Zero());
 
     // Initialization of inner loop variables.
     std::vector<Matrix> L;

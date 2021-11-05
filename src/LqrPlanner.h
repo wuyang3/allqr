@@ -85,33 +85,35 @@ public:
     void EvaluateFinalConstraints(const Vector& x, FinalConstraint& g);
 
     void EvaluateMiuInPenalty(
-        const Eigen::Ref<Eigen::VectorXd>& lambda, const Eigen::Ref<Eigen::VectorXd>& miu,
-        const Eigen::Ref<Eigen::VectorXd>& g, Eigen::Ref<Eigen::VectorXd>& miu_I);
+        const Eigen::Ref<const Eigen::VectorXd>& lambda,
+        const Eigen::Ref<const Eigen::VectorXd>& miu,
+        const Eigen::Ref<const Eigen::VectorXd>& g,
+        Eigen::Ref<Eigen::VectorXd> miu_I);
 
     void UpdateLambda(
-        const Eigen::Ref<Eigen::VectorXd>& miu,
-        const Eigen::Ref<Eigen::VectorXd>& g,
-        Eigen::Ref<Eigen::VectorXd>& lambda);
+        const Eigen::Ref<const Eigen::VectorXd>& miu,
+        const Eigen::Ref<const Eigen::VectorXd>& g,
+        Eigen::Ref<Eigen::VectorXd> lambda);
 
     void UpdateMiu(
-        const Eigen::Ref<Eigen::VectorXd>& g,
-        Eigen::Ref<Eigen::VectorXd>& miu);
+        const Eigen::Ref<const Eigen::VectorXd>& g,
+        Eigen::Ref<Eigen::VectorXd> miu);
 
     double ComputeLateralError(const double x, const double y, const size_t t);
 
     void ComputeOptimalControlExtendedLQR(std::vector<size_t>& iters, std::vector<int>& flags);
 
     int ComputeInnerExtendedLQR(
-        const std::vector<Eigen::Ref<Eigen::VectorXd>>& Lambda,
-        const std::vector<Eigen::Ref<Eigen::VectorXd>>& Miu,
-        std::vector<Eigen::Ref<Eigen::VectorXd>>& G,
+        const std::vector<Eigen::VectorXd>& Lambda,
+        const std::vector<Eigen::VectorXd>& Miu,
+        std::vector<Eigen::VectorXd>& G,
         std::vector<Matrix>& L, std::vector<Control>& l,
         double* minInnerCost, size_t* innerIter);
 
     int ComputerOuterAugLagrangian(
-        const std::vector<Eigen::Ref<Eigen::VectorXd>>& G,
-        std::vector<Eigen::Ref<Eigen::VectorXd>>& Lambda,
-        std::vector<Eigen::Ref<Eigen::VectorXd>>& Miu,
+        const std::vector<Eigen::VectorXd>& G,
+        std::vector<Eigen::VectorXd>& Lambda,
+        std::vector<Eigen::VectorXd>& Miu,
         size_t* outerIter);
 
     void PropogateOptimalTrajectory(
@@ -121,9 +123,9 @@ public:
     size_t ComputeOptimalControlIterativeLQR();
 
     double ComputeConstraintCost(
-        const Eigen::Ref<Eigen::VectorXd>& lambda,
-        const Eigen::Ref<Eigen::VectorXd>& miu_I,
-        const Eigen::Ref<Eigen::VectorXd>& g);
+        const Eigen::Ref<const Eigen::VectorXd>& lambda,
+        const Eigen::Ref<const Eigen::VectorXd>& miu_I,
+        const Eigen::Ref<const Eigen::VectorXd>& g);
     double ComputeIntermediateCost(const Vector &x, const Control &u, const size_t &t);
     double ComputeFinalCost(const Vector &x);
     std::vector<double> ComputeLateralAccelerations();

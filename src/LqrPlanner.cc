@@ -495,25 +495,27 @@ void LqrPlanner::EvaluateFinalConstraints(const Vector& x, FinalConstraint& g)
 }
 
 void LqrPlanner::EvaluateMiuInPenalty(
-    const Eigen::Ref<Eigen::VectorXd>& lambda, const Eigen::Ref<Eigen::VectorXd>& miu,
-    const Eigen::Ref<Eigen::VectorXd>& g, Eigen::Ref<Eigen::VectorXd>& miu_I)
+    const Eigen::Ref<const Eigen::VectorXd>& lambda,
+    const Eigen::Ref<const Eigen::VectorXd>& miu,
+    const Eigen::Ref<const Eigen::VectorXd>& g,
+    Eigen::Ref<Eigen::VectorXd> miu_I)
 {
     miu_I = (lambda.array().abs() < zero_tolerance_ && g.array() < 0.0)
             .select(0.0, miu);
 }
 
 void LqrPlanner::UpdateLambda(
-    const Eigen::Ref<Eigen::VectorXd>& miu,
-    const Eigen::Ref<Eigen::VectorXd>& g,
-    Eigen::Ref<Eigen::VectorXd>& lambda)
+    const Eigen::Ref<const Eigen::VectorXd>& miu,
+    const Eigen::Ref<const Eigen::VectorXd>& g,
+    Eigen::Ref<Eigen::VectorXd> lambda)
 {
     lambda = lambda + miu.cwiseProduct(g);
     lambda = lambda.cwiseMax(0.0);
 }
 
 void LqrPlanner::UpdateMiu(
-    const Eigen::Ref<Eigen::VectorXd>& g,
-    Eigen::Ref<Eigen::VectorXd>& miu)
+    const Eigen::Ref<const Eigen::VectorXd>& g,
+    Eigen::Ref<Eigen::VectorXd> miu)
 {
     //miu = (g.array() > 0.0).select(miu * phi_, miu);
     miu = miu * phi_;
@@ -539,9 +541,9 @@ double LqrPlanner::ComputeIntermediateCost(const Vector& x, const Control& u, co
 }
 
 double LqrPlanner::ComputeConstraintCost(
-    const Eigen::Ref<Eigen::VectorXd>& lambda,
-    const Eigen::Ref<Eigen::VectorXd>& miu_I,
-    const Eigen::Ref<Eigen::VectorXd>& g)
+    const Eigen::Ref<const Eigen::VectorXd>& lambda,
+    const Eigen::Ref<const Eigen::VectorXd>& miu_I,
+    const Eigen::Ref<const Eigen::VectorXd>& g)
 {
     return g.transpose() * (lambda + miu_I.cwiseProduct(g));
     //return 0.0;
@@ -640,9 +642,9 @@ void LqrPlanner::Spin()
 }
 
 int LqrPlanner::ComputeInnerExtendedLQR(
-    const std::vector<Eigen::Ref<Eigen::VectorXd>>& Lambda,
-    const std::vector<Eigen::Ref<Eigen::VectorXd>>& Miu,
-    std::vector<Eigen::Ref<Eigen::VectorXd>>& G,
+    const std::vector<Eigen::VectorXd>& Lambda,
+    const std::vector<Eigen::VectorXd>& Miu,
+    std::vector<Eigen::VectorXd>& G,
     std::vector<Matrix>& L, std::vector<Control>& l,
     double* minInnerCost, size_t* innerIter)
 {
@@ -772,14 +774,15 @@ int LqrPlanner::ComputeInnerExtendedLQR(
             G[t] = g;
 
             x = vehicle_model_.ForwardAugmentedDynamics(x, u);
-
-            //Eigen::MatrixXd cons(1, 3);
-            //cons << Lambda[t](0), miu_I(0), g(0);
-            //std::cout << "lambda    miu_I    g" << std::endl;
-            //std::cout << cons << std::endl;
         }
-
         newCost += ComputeFinalCost(x);
+
+        FinalConstraint g = FinalConstraint::Zero();
+        FinalConstraint miu_I = FinalConstraint::Zero();
+        EvaluateFinalConstraints(x, g);
+        EvaluateMiuInPenalty(Lambda[horizon_], Miu[horizon_], g, miu_I);
+        newCost += ComputeConstraintCost(Lambda[horizon_], miu_I, g);
+        G[horizon_] = g;
 
         //std::cout << "oldcost = " << oldCost << std::endl;
         //std::cout << "newcost = " << newCost << std::endl;
@@ -830,14 +833,14 @@ int LqrPlanner::ComputeInnerExtendedLQR(
 }
 
 int LqrPlanner::ComputerOuterAugLagrangian(
-    const std::vector<Eigen::Ref<Eigen::VectorXd>>& G,
-    std::vector<Eigen::Ref<Eigen::VectorXd>>& Lambda,
-    std::vector<Eigen::Ref<Eigen::VectorXd>>& Miu,
+    const std::vector<Eigen::VectorXd>& G,
+    std::vector<Eigen::VectorXd>& Lambda,
+    std::vector<Eigen::VectorXd>& Miu,
     size_t* outerIter)
 {
     int outerConvergeFlag = OUTER_UNCONVERGED;
     double maximal_constraint_violation = log(0.0);
-    for (size_t t = 0; t < horizon_; t++)
+    for (size_t t = 0; t <= horizon_; t++)
     {
         if (G[t].maxCoeff() > maximal_constraint_violation)
         {
@@ -850,7 +853,7 @@ int LqrPlanner::ComputerOuterAugLagrangian(
         outerConvergeFlag = OUTER_LOW_CONSTR_VIOLATION;
         std::cout << "Outer converged: violation "
                       << maximal_constraint_violation
-                      << " lower than thres " 
+                      << " lower than thres "
                       << constraint_tolerannce_ << std::endl;
 
         return outerConvergeFlag;
@@ -868,7 +871,7 @@ int LqrPlanner::ComputerOuterAugLagrangian(
 
     if (outerConvergeFlag == OUTER_UNCONVERGED)
     {
-        for (size_t t = 0; t < horizon_; t++)
+        for (size_t t = 0; t <= horizon_; t++)
         {
             UpdateLambda(Miu[t], G[t], Lambda[t]);
             UpdateMiu(G[t], Miu[t]);
@@ -950,9 +953,9 @@ void LqrPlanner::ComputeOptimalControlExtendedLQR(std::vector<size_t>& iters, st
     }
 
     // Initialization of outer loop variables.
-    std::vector<Eigen::Ref<Eigen::VectorXd>> Lambda;
-    std::vector<Eigen::Ref<Eigen::VectorXd>> Miu;
-    std::vector<Eigen::Ref<Eigen::VectorXd>> G;
+    std::vector<Eigen::VectorXd> Lambda;
+    std::vector<Eigen::VectorXd> Miu;
+    std::vector<Eigen::VectorXd> G;
 
     for (size_t i = 0; i < horizon_; i++)
     {

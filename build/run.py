@@ -260,7 +260,7 @@ def main(argv):
     ax8.set_xlabel('time (s)', fontsize=12)
     ax8.set_ylabel('delta front wheel (rad)', fontsize=12)
     ax8.set_xlim([0, np.max(time_c)+dt])
-    ax8.set_ylim([d_delta_f_min-0.005, d_delta_f_max+0.005])
+    ax8.set_ylim([d_delta_f_min-0.015, d_delta_f_max+0.015])
     d_steer_plot, = ax8.plot([], [], 'r.', markersize=3)
     d_steer_plot.set_xdata(time_c)
     d_steer_plot.set_ydata(d_delta_f)

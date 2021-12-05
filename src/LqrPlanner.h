@@ -12,7 +12,8 @@
 #include <vector>
 
 #include "proto/conf.pb.h"
-#include "VehicleModel.h"
+//#include "VehicleModel.h"
+#include "Constraints.h"
 
 #define INNER_UNCONVERGED        (0)
 #define INNER_REACH_MAX_ITER     (1)
@@ -165,13 +166,6 @@ private:
     Matrix R_;
     double init_miu_;
     double phi_;
-
-    Control u_min_ = Control::Zero();
-    Control u_max_ = Control::Zero();
-    Control delta_u_min_ = Control::Zero();
-    Control delta_u_max_ = Control::Zero();
-    double lat_acc_bound_;
-    double lat_dist_bound_;
 
     double dt_ = 0.0;
 

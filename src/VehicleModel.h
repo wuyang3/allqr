@@ -5,21 +5,18 @@
 #include <math.h>
 #include <vector>
 
-constexpr size_t kConstraintDim = 8;
-constexpr size_t kFinalConstraintDim = 4;
+constexpr size_t kStateDim = 4;
+constexpr size_t kControlDim = 2; // control dim, delta control dim.
+constexpr size_t kStatesDim = 6; // state + control as the optimization state.
 
-namespace Eigen {
-    typedef Eigen::Matrix<double, 10, 1> Vector10d;
-    typedef Eigen::Matrix<double, 9, 1> Vector9d;
-    typedef Eigen::Matrix<double, 8, 1> Vector8d;
-}  // end namespace Eigen
+using State = Eigen::Matrix<double, kStateDim, 1>;
+using Control = Eigen::Matrix<double, kControlDim, 1>;
 
-using State = Eigen::Vector4d;
-using Control = Eigen::Vector2d;
-using Constraint = Eigen::Vector8d;
-using FinalConstraint = Eigen::Vector4d;
-using Matrix = Eigen::MatrixXd;
-using Vector = Eigen::VectorXd;
+template <int n>
+using VectorNd = Eigen::Matrix<double, n, 1>;
+
+template <int n, int m>
+using MatrixNMd = Eigen::Matrix<double, n, m>;
 
 // vehicle model states: [global_x, global_y, heading, speed, front_wheel_angle (control), acceleration (control)]
 // vehicle model controls: [delta_front_wheel_angle, delta_acceleration]

@@ -3,17 +3,21 @@
 #include "VehicleModel.h"
 
 void ConstraintsEvaluation::EvaluateConstraints(
-    const VectorNd<kStatesDim>& x, const Control& u, VectorNd<kConstraintDim>& g) {
-    g(0) = x(4) - u_max_(0);
-    g(1) = -x(4) + u_min_(0);
-    g(2) = x(5) - u_max_(1);
-    g(3) = -x(5) + u_min_(1);
-    g(4) = u(0) - delta_u_max_(0);
-    g(5) = -u(0) + delta_u_min_(0);
-    g(6) = u(1) - delta_u_max_(1);
-    g(7) = -u(1) + delta_u_min_(1);
-    //g(8) = std::pow(x(3), 2) * std::tan(x(4)) / wheelbase_ - lat_acc_bound_;
-    //g(9) = -std::pow(x(3), 2) * std:: tan(x(4)) / wheelbase_ + lat_acc_bound_;
+    const VectorNd<kStatesDim>& x,
+    const Control& u,
+    VectorNd<kConstraintDim>* g) {
+    *g(0) = x(4) - u_max_(0);
+    *g(1) = -x(4) + u_min_(0);
+    *g(2) = x(5) - u_max_(1);
+    *g(3) = -x(5) + u_min_(1);
+    *g(4) = u(0) - delta_u_max_(0);
+    *g(5) = -u(0) + delta_u_min_(0);
+    *g(6) = u(1) - delta_u_max_(1);
+    *g(7) = -u(1) + delta_u_min_(1);
+    // *g(8) =
+    //  std::pow(x(3), 2) * std::tan(x(4)) / wheelbase_ - lat_acc_bound_;
+    // *g(9) =
+    // -std::pow(x(3), 2) * std:: tan(x(4)) / wheelbase_ + lat_acc_bound_;
 }
 
 void ConstraintsEvaluation::QuadratizeConstraints(

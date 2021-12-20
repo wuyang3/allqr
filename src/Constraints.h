@@ -116,12 +116,14 @@ class InEqualityLogBarrier {
 };
 
 // Class type for the constraint vector object that is imposed on
-// a certain timestamp of a trajectory optimization problem.
+// on the trajectory, e.g., constraint vector at the initial state
+// and final state.
 template <int p, class ConType>
 class Constraints {
  public:
   // User defined functions for constraint value, gradient, hessian
   // evaluations. Initialized upon object construction.
+  // Instead of using ref object, passing specific size matrix by pointer.
   using EvalFunc =
     std::function<void(const State& x, const Control& u, VectorNd<p>* g)>;
   using HessianFunc =
@@ -129,15 +131,15 @@ class Constraints {
                        const VectorNd<p>& g,
                        const VectorNd<p>& lambda,
                        const VectorNd<p>& penalty_in_cost,
-                       MatrixNMd<kStatesDim, kStatesDim>* Qt,
-                       MatrixNMd<kControlDim, kControlDim>* Rt)>;
+                       Eigen::Matrix<double, kStateDim, kStateDim>* Qt,
+                       Eigen::Matrix<double, kControlDim, kControlDim>* Rt)>;
   using GradientFunc =
     std::function<void(const State& x, const Control& u,
                        const VectorNd<p>& g,
                        const VectorNd<p>& lambda,
                        const VectorNd<p>& penalty_in_cost,
-                       VectorNd<kStateDim>* qt,
-                       VectorNd<kControlDim>* rt)>;
+                       Eigen::Matrix<double, kStateDim, 1>* qt,
+                       Eigen::Matrix<double, kControlDim, 1>* rt)>;
   Constraints(VectorNd<p> penaltyInit, double phi,
               EvalFunc evalFunc,
               HessianFunc hessianFunc,
@@ -154,16 +156,19 @@ class Constraints {
 
   // Evaluate the actual penalty parameter when compute the constraint cost
   // or when quadratize the constraint cost.
-  double ComputeConstraintCost() {
+  // Whenever given new x, u pair, the constraint vector g is evaluated.
+  double ComputeConstraintCost(
+    const State& x, const Control& u) {
+    EvalFunc_(x, u, g_);
     ConType::EvaluatePenaltyParam(g_, penalty_, lambda_, penalty_in_cost_);
     return ConType::ComputeConstraintCost(g_, penalty_in_cost_, lambda_);
   }
   void QuadratizeConstraint(
-    const VectorNd<kStatesDim>& x, const Control& u,
-    MatrixNMd<kStatesDim, kStatesDim>* Qt,
-    MatrixNMd<kControlDim, kControlDim>* Rt,
-    VectorNd<kStatesDim>* qt,
-    VectorNd<kControlDim>* rt) {
+    const State& x, const Control& u,
+    Eigen::Matrix<double, kStateDim, kStateDim>* Qt,
+    Eigen::Matrix<double, kControlDim, kControlDim>* Rt,
+    Eigen::Matrix<double, kStateDim, 1>* qt,
+    Eigen::Matrix<double, kControlDim, 1>* rt) {
     EvalFunc_(x, u, g_);
     ConType::EvaluatePenaltyParam(g_, penalty_, lambda_, penalty_in_cost_);
     HessianFunc_(x, u, g_, lambda_, penalty_in_cost_, Qt, Rt);
@@ -203,41 +208,57 @@ class ConstraintsEvaluation {
       : u_min_(u_min), u_max_(u_max),
         delta_u_min_(delta_u_min), delta_u_max_(delta_u_max),
         lat_acc_bound_(lat_acc_bound), lat_dist_bound_(lat_dist_bound) {}
+
     void EvaluateConstraints(
-        const VectorNd<kStatesDim>& x, const Control& u, VectorNd<kConstraintDim>& g);
-    void QuadratizeConstraints(
-        const VectorNd<kStatesDim>& x, const Control& u,
-        const VectorNd<kConstraintDim>& lambda,
-        const VectorNd<kConstraintDim>& penalty,
-        MatrixNMd<kControlDim, kStatesDim>& Pt,
-        MatrixNMd<kStatesDim, kStatesDim>& Qt,
-        MatrixNMd<kControlDim, kControlDim>& Rt,
-        VectorNd<kStatesDim>& qt,
-        VectorNd<kControlDim>& rt);
+      const State& x, const Control& u, VectorNd<kConstraintDim>* g);
+    void HessianConstraints(
+      const State& x, const Control& u,
+      const VectorNd<kConstraintDim>& g,
+      const VectorNd<kConstraintDim>& lambda,
+      const VectorNd<kConstraintDim>& penalty_in_cost,
+      Eigen::Matrix<double, kStateDim, kStateDim>* Qt,
+      Eigen::Matrix<double, kControlDim, kControlDim>* Rt);
+    void GradientConstraints(
+      const State& x, const Control& u,
+      const VectorNd<kConstraintDim>& g,
+      const VectorNd<kConstraintDim>& lambda,
+      const VectorNd<kConstraintDim>& penalty_in_cost,
+      Eigen::Matrix<double, kStateDim, 1>* qt,
+      Eigen::Matrix<double, kControlDim, 1>* rt);
 
     void EvaluateFinalConstraints(
-        const VectorNd<kStatesDim>& x, const Control& u, VectorNd<kFinalConstraintDim>& g);
-    void QuadratizeFinalConstraints(
-        const VectorNd<kStatesDim>& x, const Control& u,
-        const VectorNd<kFinalConstraintDim>& lambda,
-        const VectorNd<kFinalConstraintDim>& penalty,
-        MatrixNMd<kControlDim, kStatesDim>& Pt,
-        MatrixNMd<kStatesDim, kStatesDim>& Qt,
-        MatrixNMd<kControlDim, kControlDim>& Rt,
-        VectorNd<kStatesDim>& qt,
-        VectorNd<kControlDim>& rt);
+      const State& x, const Control& u, VectorNd<kFinalConstraintDim>* g);
+    void HessianFinalConstraints(
+      const State& x, const Control& u,
+      const VectorNd<kFinalConstraintDim>& g,
+      const VectorNd<kFinalConstraintDim>& lambda,
+      const VectorNd<kFinalConstraintDim>& penalty_in_cost,
+      Eigen::Matrix<double, kStateDim, kStateDim>* Qt,
+      Eigen::Matrix<double, kControlDim, kControlDim>* Rt);
+    void GradientFinalConstraints(
+      const State& x, const Control& u,
+      const VectorNd<kFinalConstraintDim>& g,
+      const VectorNd<kFinalConstraintDim>& lambda,
+      const VectorNd<kFinalConstraintDim>& penalty_in_cost,
+      Eigen::Matrix<double, kStateDim, 1>* qt,
+      Eigen::Matrix<double, kControlDim, 1>* rt);
 
     void EvaluateInitEqualConstraints(
-        const VectorNd<kStatesDim>& x, const Control& u, VectorNd<kInitEqualConstraintDim>& g);
-    void QuadratizeInitEqualConstraints(
-        const VectorNd<kStatesDim>& x, const Control& u,
-        const VectorNd<kInitEqualConstraintDim>& lambda,
-        const VectorNd<kInitEqualConstraintDim>& penalty,
-        MatrixNMd<kControlDim, kStatesDim>& Pt,
-        MatrixNMd<kStatesDim, kStatesDim>& Qt,
-        MatrixNMd<kControlDim, kControlDim>& Rt,
-        VectorNd<kStatesDim>& qt,
-        VectorNd<kControlDim>& rt);
+      const State& x, const Control& u, VectorNd<kInitEqualConstraintDim>* g);
+    void HessianInitConstraints(
+      const State& x, const Control& u,
+      const VectorNd<kInitEqualConstraintDim>& g,
+      const VectorNd<kInitEqualConstraintDim>& lambda,
+      const VectorNd<kInitEqualConstraintDim>& penalty_in_cost,
+      Eigen::Matrix<double, kStateDim, kStateDim>* Qt,
+      Eigen::Matrix<double, kControlDim, kControlDim>* Rt);
+    void GradientInitConstraints(
+      const State& x, const Control& u,
+      const VectorNd<kInitEqualConstraintDim>& g,
+      const VectorNd<kInitEqualConstraintDim>& lambda,
+      const VectorNd<kInitEqualConstraintDim>& penalty_in_cost,
+      Eigen::Matrix<double, kStateDim, 1>* qt,
+      Eigen::Matrix<double, kControlDim, 1>* rt);
  private:
     Control u_min_ = Control::Zero();
     Control u_max_ = Control::Zero();

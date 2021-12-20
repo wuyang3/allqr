@@ -7,11 +7,13 @@
 
 constexpr size_t kStateDim = 4;
 constexpr size_t kControlDim = 2; // control dim, delta control dim.
-constexpr size_t kStatesDim = 6; // state + control as the optimization state.
+constexpr size_t kAugStateDim = 6; // state + control as the optimization state.
 
+// determined at compile time.
 using State = Eigen::Matrix<double, kStateDim, 1>;
 using Control = Eigen::Matrix<double, kControlDim, 1>;
 
+// determined at declaration time.
 template <int n>
 using VectorNd = Eigen::Matrix<double, n, 1>;
 

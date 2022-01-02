@@ -1,9 +1,10 @@
 /build/*
 !/build/*.py
 /.vscode/*
+*.pdf
 /proto/*
 !/proto/*.proto
-*.pdf
 *.txt
+!CMakeLists.txt
 !conf.txt
 .editorconfig

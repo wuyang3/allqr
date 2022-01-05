@@ -5,6 +5,9 @@
 #include <functional>
 #include "VehicleModel.h"
 
+// The dimensions of the model size is relatively more fixed
+// in this problem while the constraint size can be flexible
+// using the template parameter.
 constexpr size_t kConstraintDim = 8;
 constexpr size_t kFinalConstraintDim = 4;
 constexpr size_t kInitEqualConstraintDim = 4;
@@ -156,7 +159,8 @@ class Constraints {
 
   // Evaluate the actual penalty parameter when compute the constraint cost
   // or when quadratize the constraint cost.
-  // Whenever given new x, u pair, the constraint vector g is evaluated.
+  // Upon the above scenarios with given x, u pair,
+  // the constraint vector g_ is updated.
   double ComputeConstraintCost(
     const State& x, const Control& u) {
     EvalFunc_(x, u, g_);

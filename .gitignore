@@ -2,6 +2,7 @@
 !/build/*.py
 /.vscode/*
 *.pdf
+*.json
 /proto/*
 !/proto/*.proto
 *.txt
